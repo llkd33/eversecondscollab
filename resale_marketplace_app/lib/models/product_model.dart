@@ -58,6 +58,9 @@ class ProductModel {
 
   // JSON에서 Product 객체 생성
   factory ProductModel.fromJson(Map<String, dynamic> json) {
+    // 판매자 정보는 조인된 users 테이블에서 가져옴
+    final userInfo = json['users'] as Map<String, dynamic>?;
+    
     return ProductModel(
       id: json['id'],
       title: json['title'],
@@ -74,8 +77,8 @@ class ProductModel {
       status: json['status'] ?? '판매중',
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
-      sellerName: json['seller_name'],
-      sellerProfileImage: json['seller_profile_image'],
+      sellerName: userInfo?['name'] ?? json['seller_name'],
+      sellerProfileImage: userInfo?['profile_image'] ?? json['seller_profile_image'],
     );
   }
 

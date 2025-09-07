@@ -125,11 +125,14 @@ class ChatModel {
   }
 
   // 상대방 ID 가져오기
-  String? getOtherUserId(String currentUserId) {
-    return participants.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => '',
-    );
+  String getOtherUserId(String currentUserId) {
+    try {
+      return participants.firstWhere(
+        (id) => id != currentUserId,
+      );
+    } catch (e) {
+      return '';
+    }
   }
 
   ChatModel copyWith({

@@ -5,9 +5,10 @@ import '../screens/home/home_screen_optimized.dart';
 import '../screens/chat/chat_list_screen.dart';
 import '../screens/shop/my_shop_screen.dart';
 import '../screens/profile/profile_screen.dart';
+import '../screens/profile/revenue_management_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/phone_auth_screen.dart';
-import '../screens/auth/sign_up_choice_screen.dart';
+// Choice screen removed; signup goes straight to phone signup
 import '../screens/auth/sign_up_phone_screen.dart';
 import '../screens/auth/sign_up_kakao_screen.dart';
 import '../widgets/auth_guard.dart';
@@ -24,6 +25,8 @@ import '../screens/transaction/transaction_list_screen.dart';
 import '../screens/transaction/transaction_detail_screen.dart';
 import '../screens/search/search_screen.dart';
 import '../screens/review/review_create_screen.dart';
+import '../screens/review/review_list_screen.dart';
+import '../screens/review/transaction_review_screen.dart';
 import '../models/product_model.dart';
 import '../models/transaction_model.dart';
 import '../screens/common/coming_soon_screen.dart';
@@ -52,11 +55,55 @@ class AppRouter {
     return GoRouter(
       initialLocation: '/',
       redirect: (context, state) {
+        final isAuthenticated = authProvider.isAuthenticated;
+        final isSessionValid = authProvider.isSessionValid();
+        final currentPath = state.uri.path;
+        
+        // 인증이 필요한 경로 목록
+        final protectedPaths = [
+          '/chat',
+          '/shop',
+          '/product/create',
+          '/my-products',
+          '/transaction',
+          '/resale/manage',
+        ];
+        
+        // 관리자 전용 경로 목록
+        final adminPaths = [
+          '/admin',
+        ];
+        
+        // 세션이 만료된 경우
+        if (isAuthenticated && !isSessionValid) {
+          // 자동 로그아웃 처리는 AuthProvider에서 수행
+          return '/login?expired=true';
+        }
+        
+        // 보호된 경로에 대한 인증 확인
+        final isProtectedPath = protectedPaths.any((path) => currentPath.startsWith(path));
+        if (isProtectedPath && !isAuthenticated) {
+          return '/login?redirect=${Uri.encodeComponent(currentPath)}';
+        }
+        
+        // 관리자 경로에 대한 권한 확인
+        final isAdminPath = adminPaths.any((path) => currentPath.startsWith(path));
+        if (isAdminPath) {
+          if (!isAuthenticated) {
+            return '/login?redirect=${Uri.encodeComponent(currentPath)}';
+          }
+          final userRole = authProvider.currentUser?.role ?? '';
+          if (!['관리자'].contains(userRole)) {
+            return '/?error=access_denied';
+          }
+        }
+        
         // 리다이렉트 파라미터 처리
         final redirect = state.uri.queryParameters['redirect'];
-        if (redirect != null && authProvider.isAuthenticated) {
-          return redirect;
+        if (redirect != null && isAuthenticated && isSessionValid) {
+          return Uri.decodeComponent(redirect);
         }
+        
         return null;
       },
       routes: [
@@ -69,7 +116,7 @@ class AppRouter {
       GoRoute(
         path: '/signup',
         name: 'signup',
-        builder: (context, state) => const SignUpChoiceScreen(),
+        builder: (context, state) => const SignUpPhoneScreen(),
       ),
       GoRoute(
         path: '/signup/phone',
@@ -228,6 +275,32 @@ class AppRouter {
       
       // Review routes
       GoRoute(
+        path: '/reviews',
+        name: 'reviews',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          if (extra == null) {
+            return const Scaffold(
+              body: Center(child: Text('사용자 정보가 필요합니다')),
+            );
+          }
+          return ReviewListScreen(
+            userId: extra['userId'] as String,
+            userName: extra['userName'] as String,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/transaction/:transactionId/reviews',
+        name: 'transaction-reviews',
+        builder: (context, state) {
+          final transactionId = state.pathParameters['transactionId'] ?? '';
+          return AuthGuard(
+            child: TransactionReviewScreen(transactionId: transactionId),
+          );
+        },
+      ),
+      GoRoute(
         path: '/review/create',
         name: 'review-create',
         builder: (context, state) {
@@ -244,6 +317,47 @@ class AppRouter {
             isSellerReview: extra['isSellerReview'] as bool,
           );
         },
+      ),
+      
+      // Admin routes
+      GoRoute(
+        path: '/admin',
+        name: 'admin',
+        builder: (context, state) => const AdminGuard(
+          child: ComingSoonScreen(
+            title: '관리자 대시보드',
+            message: '관리자 기능은 준비 중입니다.',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/admin/users',
+        name: 'admin-users',
+        builder: (context, state) => const AdminGuard(
+          child: ComingSoonScreen(
+            title: '사용자 관리',
+            message: '사용자 관리 기능은 준비 중입니다.',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/admin/transactions',
+        name: 'admin-transactions',
+        builder: (context, state) => const AdminGuard(
+          child: ComingSoonScreen(
+            title: '거래 모니터링',
+            message: '거래 모니터링 기능은 준비 중입니다.',
+          ),
+        ),
+      ),
+      
+      // Revenue management route
+      GoRoute(
+        path: '/revenue-management',
+        name: 'revenue-management',
+        builder: (context, state) => const AuthGuard(
+          child: RevenueManagementScreen(),
+        ),
       ),
       
       // Utility routes

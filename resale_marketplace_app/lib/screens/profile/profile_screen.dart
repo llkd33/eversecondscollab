@@ -7,6 +7,8 @@ import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
+import '../../services/transaction_service.dart';
+import '../../services/review_service.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/auth_guard.dart';
@@ -148,7 +150,37 @@ class _ProfileHeader extends StatefulWidget {
 class _ProfileHeaderState extends State<_ProfileHeader> {
   final ImagePicker _picker = ImagePicker();
   final UserService _userService = UserService();
+  final ReviewService _reviewService = ReviewService();
   bool _isUploading = false;
+  Map<String, dynamic> _reviewStats = {};
+  bool _isLoadingStats = true;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadReviewStats();
+  }
+  
+  Future<void> _loadReviewStats() async {
+    if (widget.user?.id != null) {
+      try {
+        final stats = await _reviewService.getUserRatingStats(widget.user!.id);
+        if (mounted) {
+          setState(() {
+            _reviewStats = stats;
+            _isLoadingStats = false;
+          });
+        }
+      } catch (e) {
+        print('Error loading review stats: $e');
+        if (mounted) {
+          setState(() {
+            _isLoadingStats = false;
+          });
+        }
+      }
+    }
+  }
 
   Future<void> _pickAndUploadImage() async {
     try {
@@ -312,7 +344,8 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        'Lv.5 신뢰판매자',
+                        widget.user?.role == '관리자' ? '관리자' : 
+                        widget.user?.role == '대신판매자' ? '대신판매자' : '일반회원',
                         style: AppStyles.bodySmall.copyWith(
                           color: AppTheme.primaryColor,
                           fontWeight: FontWeight.bold,
@@ -320,21 +353,30 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    const Icon(Icons.star, size: 16, color: AppTheme.secondaryColor),
-                    const SizedBox(width: 2),
-                    Text(
-                      '4.8',
-                      style: AppStyles.bodySmall.copyWith(
-                        fontWeight: FontWeight.bold,
+                    if (!_isLoadingStats && _reviewStats['total_reviews'] > 0) ...[
+                      const Icon(Icons.star, size: 16, color: AppTheme.secondaryColor),
+                      const SizedBox(width: 2),
+                      Text(
+                        _reviewStats['average_rating'].toString(),
+                        style: AppStyles.bodySmall.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text(
-                  '거래 15회 • 성공률 100%',
-                  style: AppStyles.bodySmall,
-                ),
+                _isLoadingStats
+                    ? Text(
+                        '리뷰 정보 로딩 중...',
+                        style: AppStyles.bodySmall,
+                      )
+                    : Text(
+                        _reviewStats['total_reviews'] > 0
+                            ? '리뷰 ${_reviewStats['total_reviews']}개 • 평점 ${_reviewStats['average_rating']}'
+                            : '아직 받은 리뷰가 없습니다',
+                        style: AppStyles.bodySmall,
+                      ),
               ],
             ),
           ),
@@ -344,7 +386,46 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
   }
 }
 
-class _EarningsSection extends StatelessWidget {
+class _EarningsSection extends StatefulWidget {
+  @override
+  State<_EarningsSection> createState() => _EarningsSectionState();
+}
+
+class _EarningsSectionState extends State<_EarningsSection> {
+  final TransactionService _transactionService = TransactionService();
+  final AuthService _authService = AuthService();
+  
+  Map<String, dynamic> _stats = {};
+  bool _isLoading = true;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+  
+  Future<void> _loadStats() async {
+    try {
+      final user = await _authService.getCurrentUser();
+      if (user?.id != null) {
+        final stats = await _transactionService.getTransactionStats(user!.id);
+        if (mounted) {
+          setState(() {
+            _stats = stats;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading stats: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -359,30 +440,32 @@ class _EarningsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '수익 현황',
+            '거래 현황',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _EarningsItem(
-                title: '총 판매액',
-                value: '₩450,000',
-              ),
-              _EarningsItem(
-                title: '대신팔기 수익',
-                value: '₩85,000',
-              ),
-              _EarningsItem(
-                title: '이번 달',
-                value: '₩65,000',
-              ),
-            ],
-          ),
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _EarningsItem(
+                      title: '총 거래',
+                      value: '${_stats['total_count'] ?? 0}회',
+                    ),
+                    _EarningsItem(
+                      title: '판매 완료',
+                      value: '${_stats['sell_count'] ?? 0}회',
+                    ),
+                    _EarningsItem(
+                      title: '대신판매',
+                      value: '${_stats['resell_count'] ?? 0}회',
+                    ),
+                  ],
+                ),
         ],
       ),
     );
@@ -441,14 +524,30 @@ class _MenuSection extends StatelessWidget {
             icon: Icons.history,
             title: '거래 내역',
             onTap: () {
-              // TODO: 거래 내역 화면으로 이동
+              context.push('/transaction/list');
+            },
+          ),
+          _MenuItem(
+            icon: Icons.rate_review,
+            title: '내 리뷰',
+            onTap: () {
+              final user = context.read<AuthProvider>().user;
+              if (user != null) {
+                context.pushNamed(
+                  'reviews',
+                  extra: {
+                    'userId': user.id,
+                    'userName': user.name,
+                  },
+                );
+              }
             },
           ),
           _MenuItem(
             icon: Icons.analytics,
-            title: '판매 통계',
+            title: '수익 관리',
             onTap: () {
-              // TODO: 판매 통계 화면으로 이동
+              context.push('/revenue-management');
             },
           ),
           _MenuItem(

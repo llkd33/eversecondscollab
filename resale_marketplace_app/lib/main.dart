@@ -7,6 +7,7 @@ import 'utils/app_router.dart';
 import 'theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/product_provider.dart';
+import 'widgets/session_monitor.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,11 +41,13 @@ class MyApp extends StatelessWidget {
           // Router 초기화 (인증 상태에 따른 리디렉션 처리를 위해)
           AppRouter.router = AppRouter.createRouter(context);
           
-          return MaterialApp.router(
-            title: '중고거래 마켓',
-            theme: AppTheme.lightTheme,
-            debugShowCheckedModeBanner: false,
-            routerConfig: AppRouter.router,
+          return SessionMonitor(
+            child: MaterialApp.router(
+              title: '중고거래 마켓',
+              theme: AppTheme.lightTheme,
+              debugShowCheckedModeBanner: false,
+              routerConfig: AppRouter.router,
+            ),
           );
         },
       ),

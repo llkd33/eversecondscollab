@@ -58,16 +58,20 @@ class _ReviewListScreenState extends State<ReviewListScreen>
       setState(() => _isLoading = true);
       
       // 받은 리뷰 로드
-      final received = await _reviewService.getReceivedReviews(widget.userId);
+      final received = await _reviewService.getReceivedReviews(userId: widget.userId);
       
       // 작성한 리뷰 로드
-      final written = await _reviewService.getWrittenReviews(widget.userId);
+      final written = await _reviewService.getWrittenReviews(userId: widget.userId);
       
       // 사용자 정보 로드
       final userIds = <String>{};
-      for (final review in [...received, ...written]) {
+      for (final review in received) {
         userIds.add(review.reviewerId);
-        userIds.add(review.revieweeId);
+        userIds.add(review.reviewedUserId);
+      }
+      for (final review in written) {
+        userIds.add(review.reviewerId);
+        userIds.add(review.reviewedUserId);
       }
       
       for (final userId in userIds) {
@@ -178,7 +182,7 @@ class _ReviewListScreenState extends State<ReviewListScreen>
       itemCount: _writtenReviews.length,
       itemBuilder: (context, index) {
         final review = _writtenReviews[index];
-        final reviewee = _userCache[review.revieweeId];
+        final reviewee = _userCache[review.reviewedUserId];
         return _buildReviewItem(theme, review, reviewee, false);
       },
     );
@@ -359,7 +363,7 @@ class _ReviewListScreenState extends State<ReviewListScreen>
           ],
           // 리뷰 내용
           Text(
-            review.content,
+            review.comment,
             style: theme.textTheme.bodyMedium,
           ),
         ],

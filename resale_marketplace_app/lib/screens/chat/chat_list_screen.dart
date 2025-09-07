@@ -172,11 +172,17 @@ class _ChatListItem extends StatelessWidget {
   }
 
   Widget _buildChatInfo(bool hasUnreadMessages) {
-    // 상대방 이름 가져오기 (임시로 ID 사용)
+    // 상대방 이름 가져오기 (실제 이름 또는 ID 사용)
     final otherParticipant = chat.participants.firstWhere(
       (id) => id != currentUserId,
       orElse: () => 'Unknown',
     );
+    
+    // 채팅방 제목 결정 (대신팔기 정보 포함)
+    String chatTitle = chat.productTitle ?? otherParticipant;
+    if (chat.isResaleChat && chat.resellerName != null) {
+      chatTitle = '${chat.productTitle} (${chat.resellerName}님이 대신판매)';
+    }
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -185,7 +191,7 @@ class _ChatListItem extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                chat.productTitle ?? otherParticipant,
+                chatTitle,
                 style: AppStyles.bodyMedium.copyWith(
                   fontWeight: hasUnreadMessages ? FontWeight.bold : FontWeight.w600,
                 ),
@@ -203,6 +209,28 @@ class _ChatListItem extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
+        // 대신팔기 채팅방 표시
+        if (chat.isResaleChat) ...[
+          Row(
+            children: [
+              Icon(
+                Icons.store,
+                size: 12,
+                color: Colors.orange[600],
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '대신판매 거래',
+                style: AppStyles.bodySmall.copyWith(
+                  color: Colors.orange[600],
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+        ],
         Text(
           chat.lastMessage ?? '대화를 시작하세요',
           style: AppStyles.bodySmall.copyWith(
@@ -343,8 +371,11 @@ class _ChatListItem extends StatelessWidget {
       MaterialPageRoute(
         builder: (context) => ChatRoomScreen(
           chatRoomId: chat.id,
-          userName: otherParticipant, // TODO: 실제 사용자 이름으로 변경 필요
+          userName: chat.otherUserName ?? otherParticipant,
           productTitle: chat.productTitle ?? '',
+          isResaleChat: chat.isResaleChat,
+          resellerName: chat.resellerName,
+          originalSellerName: chat.originalSellerName,
         ),
       ),
     );

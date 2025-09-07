@@ -181,7 +181,43 @@ class AuthService {
       await _supabase.auth.refreshSession();
     } catch (e) {
       print('Error refreshing session: $e');
+      throw Exception('세션 새로고침 실패: $e');
     }
+  }
+  
+  /// 현재 세션 정보 가져오기
+  Session? get currentSession => _supabase.auth.currentSession;
+  
+  /// 세션 유효성 검사
+  bool isSessionValid() {
+    final session = currentSession;
+    if (session == null) return false;
+    
+    if (session.expiresAt != null) {
+      final expiryTime = DateTime.fromMillisecondsSinceEpoch(session.expiresAt! * 1000);
+      return expiryTime.isAfter(DateTime.now());
+    }
+    
+    return true;
+  }
+  
+  /// 자동 토큰 새로고침 설정
+  void enableAutoRefresh() {
+    // Supabase는 기본적으로 자동 새로고침이 활성화되어 있음
+    // 필요시 추가 로직 구현
+  }
+  
+  /// 세션 만료 시간 확인 (분 단위)
+  int? getSessionExpiryMinutes() {
+    final session = currentSession;
+    if (session?.expiresAt == null) return null;
+    
+    final expiryTime = DateTime.fromMillisecondsSinceEpoch(session!.expiresAt! * 1000);
+    final now = DateTime.now();
+    
+    if (expiryTime.isBefore(now)) return 0;
+    
+    return expiryTime.difference(now).inMinutes;
   }
   
   /// 특정 기능에 대한 접근 권한 확인
@@ -214,6 +250,7 @@ class AuthService {
     required String password,
   }) async {
     try {
+      // Prefer email path to avoid phone provider dependencies
       final syntheticEmail = _syntheticEmailFromPhone(phone);
       await _supabase.auth.signInWithPassword(email: syntheticEmail, password: password);
       // users 테이블에서 프로필 로드
@@ -225,7 +262,35 @@ class AuthService {
       _cache.clear();
       return profile != null ? UserModel.fromJson(profile) : await getUserProfile();
     } catch (e) {
-      throw Exception('로그인 실패: $e');
+      // 2) Fallback: try phone+password with E.164 formatting
+      try {
+        final e164 = _formatToE164KR(phone);
+        await _supabase.auth.signInWithPassword(phone: e164, password: password);
+        final profile = await _supabase
+            .from('users')
+            .select()
+            .eq('phone', _displayPhoneFromE164(e164))
+            .maybeSingle();
+        _cache.clear();
+        return profile != null ? UserModel.fromJson(profile) : await getUserProfile();
+      } catch (_) {}
+      // 3) If no account, auto sign-up
+      try {
+        final existing = await _supabase
+            .from('users')
+            .select('id')
+            .eq('phone', phone)
+            .maybeSingle();
+        if (existing == null) {
+          // 계정이 없으면 자동 회원가입
+          final nickname = '사용자${phone.replaceAll(RegExp(r'[^0-9]'), '')}';
+          return await signUpWithPhonePassword(phone: phone, password: password, nickname: nickname);
+        } else {
+          throw Exception('로그인 실패: 기존 계정은 OTP 기반으로 가입되었을 수 있습니다. 회원가입 화면에서 비밀번호를 설정한 후 다시 시도해주세요.');
+        }
+      } catch (inner) {
+        throw Exception(inner.toString().replaceFirst('Exception: ', ''));
+      }
     }
   }
 
@@ -234,25 +299,29 @@ class AuthService {
     required String phone,
     required String password,
     required String nickname,
+    String role = '일반',
   }) async {
-    try {
-      // 중복 체크 (전화번호 기준)
-      final exists = await _supabase
-          .from('users')
-          .select('id')
-          .eq('phone', phone)
-          .maybeSingle();
-      if (exists != null) {
-        throw Exception('이미 가입된 전화번호입니다. 다른 방법으로 로그인해주세요.');
-      }
+    // 중복 체크 (전화번호 기준)
+    final exists = await _supabase
+        .from('users')
+        .select('id')
+        .eq('phone', phone)
+        .maybeSingle();
+    if (exists != null) {
+      throw Exception('이미 가입된 전화번호입니다. 다른 방법으로 로그인해주세요.');
+    }
 
-      final syntheticEmail = _syntheticEmailFromPhone(phone);
+    final syntheticEmail = _syntheticEmailFromPhone(phone);
+
+    // 1) Try phone+password sign-up with E.164
+    try {
+      final e164 = _formatToE164KR(phone);
       final signUpRes = await _supabase.auth.signUp(
-        email: syntheticEmail,
+        phone: e164,
         password: password,
         data: {
           'name': nickname,
-          'phone': phone,
+          'phone': _displayPhoneFromE164(e164),
         },
       );
       if (signUpRes.user == null) {
@@ -265,10 +334,10 @@ class AuthService {
             'id': signUpRes.user!.id,
             'email': syntheticEmail,
             'name': nickname,
-            'phone': phone,
+            'phone': _displayPhoneFromE164(e164),
             'profile_image': null,
             'is_verified': true,
-            'role': '일반',
+            'role': role,
             'created_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
           })
@@ -278,12 +347,107 @@ class AuthService {
       _cache.clear();
       return UserModel.fromJson(userRow);
     } catch (e) {
+      final msg = e.toString();
+      // 2) Fallback: if phone provider disabled, sign up via email+password
+      if (msg.contains('phone_provider_disabled') ||
+          msg.contains('Phone signups are disabled')) {
+        final emailSignUp = await _supabase.auth.signUp(
+          email: syntheticEmail,
+          password: password,
+          data: {
+            'name': nickname,
+            'phone': phone,
+          },
+        );
+        if (emailSignUp.user == null) {
+          throw Exception('회원가입 실패: 이메일 경로 생성 실패');
+        }
+
+        final userRow = await _supabase
+            .from('users')
+            .insert({
+              'id': emailSignUp.user!.id,
+              'email': syntheticEmail,
+              'name': nickname,
+              'phone': phone,
+              'profile_image': null,
+              'is_verified': true,
+              'role': role,
+              'created_at': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .select()
+            .single();
+
+        _cache.clear();
+        return UserModel.fromJson(userRow);
+      }
+
+      if (msg.contains('User already registered')) {
+        throw Exception('이미 가입된 전화번호입니다. 로그인하거나 다른 전화번호를 사용해주세요.');
+      }
       throw Exception('회원가입 실패: $e');
     }
   }
 
   String _syntheticEmailFromPhone(String phone) {
     final digits = phone.replaceAll(RegExp('[^0-9]'), '');
-    return '$digits@everseconds.local';
+    if (digits.isEmpty) {
+      throw Exception('전화번호가 비어있습니다. 전화번호를 정확히 입력해주세요.');
+    }
+    // Conservative local part: start with a letter, then digits only.
+    final local = 'u$digits';
+    // Use a conventional public TLD domain specific to the app.
+    return '${local.toLowerCase()}@everseconds.dev';
+  }
+
+  // Convert KR local phone (e.g., 01012345678 or 010-1234-5678) to E.164 (+82...)
+  String _formatToE164KR(String phone) {
+    var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('0')) {
+      // Remove leading 0 for KR mobiles, assume 010/011 etc
+      digits = digits.substring(1);
+    }
+    if (!digits.startsWith('82')) {
+      // Prepend country code 82
+      digits = '82$digits';
+    }
+    return '+$digits';
+  }
+
+  // Display form back to 010-.... style (stored in DB as plain digits with dashes optional)
+  String _displayPhoneFromE164(String e164) {
+    final digits = e164.replaceAll(RegExp(r'[^0-9]'), '');
+    // Strip 82
+    final local = digits.startsWith('82') ? digits.substring(2) : digits;
+    // Re-add leading 0
+    final full = local.startsWith('0') ? local : '0$local';
+    return full; // Keep as numeric string without dashes
+  }
+
+  /// Ensure a test user exists and sign in; grants admin role for full access.
+  Future<UserModel?> signInOrCreateTestUser({
+    String phone = '010-9999-0001',
+    String password = 'test1234',
+    String nickname = '테스트 사용자',
+    String role = '관리자',
+  }) async {
+    try {
+      // Try sign in first
+      await signInWithPhonePassword(phone: phone, password: password);
+      final profile = await getUserProfile();
+      if (profile != null) return profile;
+    } catch (_) {
+      // ignore, will try to sign up
+    }
+
+    // Create if missing
+    final created = await signUpWithPhonePassword(
+      phone: phone,
+      password: password,
+      nickname: nickname,
+      role: role,
+    );
+    return created ?? await getUserProfile();
   }
 }

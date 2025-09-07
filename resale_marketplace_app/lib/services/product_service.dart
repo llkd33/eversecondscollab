@@ -24,6 +24,11 @@ class ProductService {
       if (resaleEnabled && resaleFeePercentage != null && resaleFeePercentage > 0) {
         calculatedResaleFee = (price * resaleFeePercentage / 100).round();
       }
+      
+      // 수수료가 상품 가격보다 클 수 없음
+      if (calculatedResaleFee > price) {
+        calculatedResaleFee = price;
+      }
 
       final response = await _client.from('products').insert({
         'title': title,
@@ -54,17 +59,7 @@ class ProductService {
           .eq('id', productId)
           .single();
 
-      final product = ProductModel.fromJson(response);
-      
-      // 판매자 정보 추가
-      if (response['users'] != null) {
-        return product.copyWith(
-          sellerName: response['users']['name'],
-          sellerProfileImage: response['users']['profile_image'],
-        );
-      }
-      
-      return product;
+      return ProductModel.fromJson(response);
     } catch (e) {
       print('Error getting product by id: $e');
       return null;
@@ -102,20 +97,9 @@ class ProductService {
           .order(orderBy, ascending: ascending)
           .range(offset, offset + limit - 1);
 
-      final supabaseList = (response as List).map((item) {
-        final product = ProductModel.fromJson(item);
-        
-        // 판매자 정보 추가
-        if (item['users'] != null) {
-          return product.copyWith(
-            sellerName: item['users']['name'],
-            sellerProfileImage: item['users']['profile_image'],
-          );
-        }
-        
-        return product;
+      return (response as List).map((item) {
+        return ProductModel.fromJson(item);
       }).toList();
-      return supabaseList;
     } catch (e) {
       print('Error getting products: $e');
       return [];
@@ -133,6 +117,57 @@ class ProductService {
       resaleEnabled: true,
       status: '판매중',
     );
+  }
+
+  // 대신팔기 가능한 상품 목록 조회 (필터링 포함)
+  Future<List<ProductModel>> getResaleEnabledProducts({
+    String? category,
+    String? searchQuery,
+    int? minPrice,
+    int? maxPrice,
+    double? minCommissionRate,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    try {
+      var query = _client
+          .from('products')
+          .select('*, users!seller_id(name, profile_image)')
+          .eq('resale_enabled', true)
+          .eq('status', '판매중');
+
+      // 필터 적용
+      if (category != null && category != '전체') {
+        query = query.eq('category', category);
+      }
+      
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        query = query.or('title.ilike.%$searchQuery%,description.ilike.%$searchQuery%');
+      }
+      
+      if (minPrice != null) {
+        query = query.gte('price', minPrice);
+      }
+      
+      if (maxPrice != null) {
+        query = query.lte('price', maxPrice);
+      }
+      
+      if (minCommissionRate != null) {
+        query = query.gte('resale_fee_percentage', minCommissionRate);
+      }
+
+      final response = await query
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      return (response as List).map((item) {
+        return ProductModel.fromJson(item);
+      }).toList();
+    } catch (e) {
+      print('Error getting resale enabled products: $e');
+      return [];
+    }
   }
 
   // 상품 업데이트
@@ -157,6 +192,10 @@ class ProductService {
       if (resaleEnabled != null) updates['resale_enabled'] = resaleEnabled;
       if (resaleFeePercentage != null) {
         updates['resale_fee_percentage'] = resaleFeePercentage;
+        // 수수료 금액도 자동 계산하여 업데이트
+        if (price != null) {
+          updates['resale_fee'] = (price * resaleFeePercentage / 100).round();
+        }
       }
       if (status != null) updates['status'] = status;
 
@@ -292,17 +331,7 @@ class ProductService {
           .range(offset, offset + limit - 1);
 
       return (response as List).map((item) {
-        final product = ProductModel.fromJson(item);
-        
-        // 판매자 정보 추가
-        if (item['users'] != null) {
-          return product.copyWith(
-            sellerName: item['users']['name'],
-            sellerProfileImage: item['users']['profile_image'],
-          );
-        }
-        
-        return product;
+        return ProductModel.fromJson(item);
       }).toList();
     } catch (e) {
       print('Error searching products: $e');
@@ -365,13 +394,27 @@ class ProductService {
     String userId,
   ) async {
     final uploadedUrls = <String>[];
+    final uploadedFileNames = <String>[];
     
     try {
       for (int i = 0; i < imageFiles.length; i++) {
         final file = imageFiles[i];
-        final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final extension = file.path.split('.').last.toLowerCase();
+        final validExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+        
+        if (!validExtensions.contains(extension)) {
+          throw Exception('지원하지 않는 이미지 형식입니다: $extension');
+        }
+        
+        final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.$extension';
         
         final bytes = await file.readAsBytes();
+        
+        // 파일 크기 체크 (10MB 제한)
+        if (bytes.length > 10 * 1024 * 1024) {
+          throw Exception('이미지 파일 크기가 너무 큽니다 (최대 10MB)');
+        }
+        
         await _client.storage
             .from('product-images')
             .uploadBinary(fileName, bytes);
@@ -381,17 +424,17 @@ class ProductService {
             .getPublicUrl(fileName);
         
         uploadedUrls.add(url);
+        uploadedFileNames.add(fileName);
       }
       
       return uploadedUrls;
     } catch (e) {
       print('Error uploading product images: $e');
       // 실패한 경우 이미 업로드된 이미지 삭제
-      for (final url in uploadedUrls) {
-        final fileName = url.split('/').last;
+      for (final fileName in uploadedFileNames) {
         await deleteProductImage(fileName);
       }
-      return [];
+      rethrow;
     }
   }
 

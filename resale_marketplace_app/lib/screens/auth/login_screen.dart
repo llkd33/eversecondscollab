@@ -87,34 +87,38 @@ class _LoginScreenState extends State<LoginScreen>
                   child: Column(
                     children: [
                       // Animated Logo
-                      TweenAnimationBuilder(
-                        tween: Tween<double>(begin: 0, end: 1),
-                        duration: const Duration(milliseconds: 800),
-                        builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.primaryColor.withOpacity(0.3),
-                                    blurRadius: 30,
-                                    spreadRadius: 5,
-                                  ),
-                                ],
+                      // Hidden Dev: long-press logo to open dev tools
+                      GestureDetector(
+                        onLongPress: _openDevTools,
+                        child: TweenAnimationBuilder(
+                          tween: Tween<double>(begin: 0, end: 1),
+                          duration: const Duration(milliseconds: 800),
+                          builder: (context, value, child) {
+                            return Transform.scale(
+                              scale: value,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.primaryColor.withOpacity(0.3),
+                                      blurRadius: 30,
+                                      spreadRadius: 5,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.storefront,
+                                  size: 60,
+                                  color: AppTheme.primaryColor,
+                                ),
                               ),
-                              child: Icon(
-                                Icons.storefront,
-                                size: 60,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(height: 24),
                       
@@ -199,6 +203,7 @@ class _LoginScreenState extends State<LoginScreen>
                             onPressed: () async {
                               if (_isLoading) return;
                               final phone = _phoneController.text.trim();
+                              final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
                               final password = _passwordController.text;
                               if (phone.isEmpty || password.isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -209,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen>
                               setState(() => _isLoading = true);
                               final authProvider = context.read<AuthProvider>();
                               final ok = await authProvider.signInWithPhonePassword(
-                                phone: phone,
+                                phone: normalizedPhone,
                                 password: password,
                               );
                               setState(() => _isLoading = false);
@@ -225,18 +230,12 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            TextButton(
-                              onPressed: () => context.push('/signup'),
-                              child: const Text('회원가입'),
-                            ),
-                            TextButton(
-                              onPressed: () => context.push('/phone-auth'),
-                              child: const Text('휴대폰 OTP 로그인'),
-                            ),
-                          ],
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => context.push('/signup'),
+                            child: const Text('회원가입'),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         // Phone Login Button (Primary)
@@ -263,6 +262,32 @@ class _LoginScreenState extends State<LoginScreen>
                         
                         const SizedBox(height: 24),
                         
+                        // Test account (local session) — full access without real account
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              if (_isLoading) return;
+                              final auth = context.read<AuthProvider>();
+                              setState(() => _isLoading = true);
+                              final ok = await auth.signInWithTestAccount();
+                              setState(() => _isLoading = false);
+                              if (ok && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('테스트 모드로 둘러보기 시작')),
+                                );
+                                context.go('/');
+                              } else if (mounted && auth.errorMessage != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(auth.errorMessage!)),
+                                );
+                              }
+                            },
+                            child: const Text('테스트 계정으로 보기'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         // Browse as guest
                         TextButton(
                           onPressed: () {
@@ -383,37 +408,9 @@ class _LoginScreenState extends State<LoginScreen>
     );
     
     try {
-      // 카카오 로그인은 아직 구현되지 않음
-      final UserModel? user = null; // await _authService.signInWithKakao();
-      
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-      }
-      
-      if (user != null) {
-        // 로그인 성공
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${user.name}님, 환영합니다!'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-          
-          // 전화번호가 임시인 경우 SMS 인증 안내
-          if (user.phone.startsWith('temp_')) {
-            _showPhoneVerificationDialog();
-          } else {
-            context.go('/home');
-          }
-        }
-      } else {
-        // 로그인 실패
-        if (mounted) {
-          _showErrorDialog('카카오 로그인에 실패했습니다. 다시 시도해주세요.');
-        }
-      }
+      // TODO: 카카오 로그인 연동. 현재는 가입 단계로 이동
+      if (mounted) Navigator.pop(context);
+      if (mounted) context.push('/signup/kakao');
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Close loading dialog
@@ -483,6 +480,60 @@ class _LoginScreenState extends State<LoginScreen>
         ],
       ),
     );
+  }
+
+  // Developer tools: create/sign-in test account in Supabase
+  void _openDevTools() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Developer Tools'),
+          content: const Text('테스트 계정(010-9999-0001 / test1234)을 Supabase에 생성/로그인합니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('닫기'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (_isLoading) return;
+                Navigator.pop(context); // close dialog
+                await _runDevCreateTest();
+              },
+              child: const Text('실행'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _runDevCreateTest() async {
+    setState(() => _isLoading = true);
+    final auth = AuthService();
+    try {
+      final user = await auth.signInOrCreateTestUser();
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('테스트 계정 준비 완료 (Supabase)')), 
+        );
+        // Navigate home; AuthProvider will react to auth state change
+        context.go('/');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('테스트 계정 처리 결과가 비어있습니다.')), 
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('테스트 계정 처리 실패: $e')),
+      );
+    }
   }
 }
 

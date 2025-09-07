@@ -7,6 +7,9 @@ import '../../models/product_model.dart';
 import '../../models/user_model.dart';
 import '../../services/product_service.dart';
 import '../../services/user_service.dart';
+import '../../services/chat_service.dart';
+import '../../services/shop_service.dart';
+import '../../services/transaction_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/auth_guard.dart';
 
@@ -25,6 +28,8 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final ProductService _productService = ProductService();
   final UserService _userService = UserService();
+  final ShopService _shopService = ShopService();
+  final TransactionService _transactionService = TransactionService();
   final PageController _pageController = PageController();
   
   ProductModel? _product;
@@ -708,45 +713,308 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   // 대신팔기 처리
-  void _handleResale() {
+  Future<void> _handleResale() async {
     final authProvider = context.read<AuthProvider>();
     
     if (!authProvider.isAuthenticated) {
       _showLoginDialog('대신팔기를 신청하려면 로그인이 필요합니다.');
       return;
     }
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('대신팔기 기능 준비중입니다')),
+
+    if (_product == null || _currentUser == null) return;
+
+    try {
+      // 사용자의 샵 정보 가져오기
+      final userShop = await _shopService.getShopByOwnerId(_currentUser!.id);
+      if (userShop == null) {
+        throw Exception('샵 정보를 찾을 수 없습니다. 먼저 샵을 생성해주세요.');
+      }
+
+      // 대신팔기 수수료 확인 다이얼로그
+      final confirmed = await _showResaleConfirmDialog();
+      if (confirmed != true) return;
+
+      setState(() {
+        _isUpdating = true;
+      });
+
+      // 대신팔기 상품으로 추가 (기본 수수료 사용)
+      final success = await _shopService.addResaleProduct(
+        shopId: userShop.id,
+        productId: _product!.id,
+        commissionPercentage: _product!.resaleFeePercentage ?? 0,
+      );
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('대신팔기 상품으로 추가되었습니다'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('대신팔기 추가에 실패했습니다');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('대신팔기 실패: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isUpdating = false;
+      });
+    }
+  }
+
+  // 대신팔기 확인 다이얼로그
+  Future<bool?> _showResaleConfirmDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('대신팔기 신청'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('이 상품을 내 샵에서 대신 판매하시겠습니까?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '상품: ${_product!.title}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text('가격: ${_product!.formattedPrice}'),
+                  Text('수수료: ${_product!.formattedResaleFee} (${_product!.resaleFeePercentage?.toInt() ?? 0}%)'),
+                  Text('내 수익: ${_formatPrice(_product!.resaleFee)}'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
+            child: const Text(
+              '신청',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatPrice(int price) {
+    if (price >= 10000) {
+      if (price % 10000 == 0) {
+        return '${(price / 10000).toInt()}만원';
+      } else {
+        return '${(price / 10000).toStringAsFixed(1)}만원';
+      }
+    } else {
+      return '${_numberWithCommas(price)}원';
+    }
+  }
+  
+  String _numberWithCommas(int number) {
+    final formatter = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+    return number.toString().replaceAllMapped(
+      formatter,
+      (match) => '${match[1]},',
     );
   }
 
   // 채팅 시작
-  void _startChat() {
+  Future<void> _startChat() async {
     final authProvider = context.read<AuthProvider>();
     
     if (!authProvider.isAuthenticated) {
       _showLoginDialog('채팅을 시작하려면 로그인이 필요합니다.');
       return;
     }
-    context.push('/coming-soon', extra: {
-      'title': '채팅 기능 준비 중',
-      'message': '곧 1:1 실시간 채팅 기능이 제공됩니다. 잠시만 기다려주세요.',
-    });
+
+    if (_product == null || _currentUser == null) return;
+
+    try {
+      // 채팅 서비스 import 필요
+      final chatService = ChatService();
+      
+      // 채팅방 생성 또는 기존 채팅방 찾기
+      final chat = await chatService.createChat(
+        participants: [_currentUser!.id, _product!.sellerId],
+        productId: _product!.id,
+      );
+
+      if (chat != null) {
+        // 채팅방으로 이동
+        if (mounted) {
+          context.push('/chat/room/${chat.id}');
+        }
+      } else {
+        throw Exception('채팅방 생성에 실패했습니다');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('채팅방 생성 실패: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // 구매하기
-  void _buyProduct() {
+  Future<void> _buyProduct() async {
     final authProvider = context.read<AuthProvider>();
     
     if (!authProvider.isAuthenticated) {
       _showLoginDialog('구매하려면 로그인이 필요합니다.');
       return;
     }
-    context.push('/coming-soon', extra: {
-      'title': '구매 기능 준비 중',
-      'message': '안전한 에스크로 결제와 배송 추적 기능이 곧 제공됩니다.',
-    });
+
+    if (_product == null || _currentUser == null) return;
+
+    try {
+      // 구매 확인 다이얼로그
+      final confirmed = await _showBuyConfirmDialog();
+      if (confirmed != true) return;
+
+      setState(() {
+        _isUpdating = true;
+      });
+
+      // 채팅방 먼저 생성
+      final chatService = ChatService();
+      final chat = await chatService.createChat(
+        participants: [_currentUser!.id, _product!.sellerId],
+        productId: _product!.id,
+      );
+
+      if (chat == null) {
+        throw Exception('채팅방 생성에 실패했습니다');
+      }
+
+      // 거래 생성
+      final transaction = await _transactionService.createTransaction(
+        productId: _product!.id,
+        buyerId: _currentUser!.id,
+        sellerId: _product!.sellerId,
+        price: _product!.price,
+        resaleFee: _product!.resaleFee,
+        chatId: chat.id,
+        transactionType: '일반거래',
+      );
+
+      if (transaction != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('거래가 시작되었습니다. 채팅방에서 거래를 진행해주세요.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          
+          // 채팅방으로 이동
+          context.push('/chat/room/${chat.id}');
+        }
+      } else {
+        throw Exception('거래 생성에 실패했습니다');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('구매 실패: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isUpdating = false;
+      });
+    }
+  }
+
+  // 구매 확인 다이얼로그
+  Future<bool?> _showBuyConfirmDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('구매 확인'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('이 상품을 구매하시겠습니까?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '상품: ${_product!.title}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text('가격: ${_product!.formattedPrice}'),
+                  Text('판매자: ${_product!.sellerName ?? '판매자'}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '구매 버튼을 누르면 채팅방이 생성되고 판매자와 거래를 진행할 수 있습니다.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
+            child: const Text(
+              '구매',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // 상품 공유

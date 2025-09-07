@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/common_app_bar.dart';
-
 import '../../widgets/search_bar.dart' as custom;
 import '../../theme/app_theme.dart';
+import '../../models/product_model.dart';
+import '../../models/user_model.dart';
+import '../../services/product_service.dart';
+import '../../services/shop_service.dart';
+import '../../services/user_service.dart';
 
 class ResaleBrowseScreen extends StatefulWidget {
   const ResaleBrowseScreen({super.key});
@@ -16,6 +20,51 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
   String _selectedCategory = '전체';
   String _searchQuery = '';
   final List<String> _categories = ['전체', '전자기기', '의류', '생활용품', '도서', '기타'];
+  
+  final ProductService _productService = ProductService();
+  final ShopService _shopService = ShopService();
+  final UserService _userService = UserService();
+  
+  List<ProductModel> _resaleProducts = [];
+  UserModel? _currentUser;
+  bool _isLoading = true;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadResaleProducts();
+  }
+  
+  Future<void> _loadResaleProducts() async {
+    try {
+      setState(() => _isLoading = true);
+      
+      // 현재 사용자 정보 가져오기
+      _currentUser = await _userService.getCurrentUser();
+      
+      // 대신팔기 가능한 상품들 가져오기
+      final products = await _productService.getResaleEnabledProducts(
+        category: _selectedCategory == '전체' ? null : _selectedCategory,
+        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+      );
+      
+      setState(() {
+        _resaleProducts = products;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading resale products: $e');
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('상품을 불러오는데 실패했습니다: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +90,12 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
                 setState(() {
                   _searchQuery = value;
                 });
+                // 검색어 변경 시 500ms 후 자동 검색
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (_searchQuery == value) {
+                    _loadResaleProducts();
+                  }
+                });
               },
             ),
           ),
@@ -65,6 +120,7 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
                       setState(() {
                         _selectedCategory = category;
                       });
+                      _loadResaleProducts();
                     },
                     selectedColor: AppTheme.primaryColor.withOpacity(0.2),
                     checkmarkColor: AppTheme.primaryColor,
@@ -102,26 +158,57 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
           
           // 상품 리스트
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.75,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: 20, // TODO: 실제 데이터로 교체
-              itemBuilder: (context, index) {
-                return _ResaleProductCard(
-                  title: '갤럭시 S23 Ultra ${index + 1}',
-                  price: '₩${(index + 1) * 50000}',
-                  originalSeller: '김철수',
-                  commissionRate: 10.0 + (index % 5),
-                  imageUrl: null, // TODO: 실제 이미지 URL
-                  onAddToShop: () => _showAddToShopDialog(context, index),
-                );
-              },
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _resaleProducts.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.storefront_outlined,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              '대신팔기 가능한 상품이 없습니다',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              '다른 카테고리나 검색어를 시도해보세요',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadResaleProducts,
+                        child: GridView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.75,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: _resaleProducts.length,
+                          itemBuilder: (context, index) {
+                            final product = _resaleProducts[index];
+                            return _ResaleProductCard(
+                              product: product,
+                              onAddToShop: () => _showAddToShopDialog(context, product),
+                            );
+                          },
+                        ),
+                      ),
           ),
         ],
       ),
@@ -199,7 +286,7 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
     );
   }
 
-  void _showAddToShopDialog(BuildContext context, int productIndex) {
+  void _showAddToShopDialog(BuildContext context, ProductModel product) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -208,14 +295,20 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('갤럭시 S23 Ultra ${productIndex + 1}'),
-            const SizedBox(height: 8),
             Text(
-              '가격: ₩${(productIndex + 1) * 50000}',
+              product.title,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            Text('수수료율: ${10.0 + (productIndex % 5)}%'),
+            Text(
+              '가격: ${product.formattedPrice}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text('수수료율: ${product.resaleFeePercentage?.toStringAsFixed(1) ?? '0'}%'),
+            Text('예상 수수료: ${product.formattedResaleFee}'),
+            const SizedBox(height: 8),
+            Text('원 판매자: ${product.sellerName ?? '알 수 없음'}'),
             const SizedBox(height: 16),
             const Text(
               '이 상품을 내 샵에 추가하시겠습니까?\n판매 성공 시 설정된 수수료를 받을 수 있습니다.',
@@ -231,7 +324,7 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _addToMyShop(productIndex);
+              _addToMyShop(product);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -244,49 +337,95 @@ class _ResaleBrowseScreenState extends State<ResaleBrowseScreen> {
     );
   }
 
-  void _addToMyShop(int productIndex) {
-    // TODO: 실제 대신팔기 추가 로직 구현
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Text('갤럭시 S23 Ultra ${productIndex + 1}이(가) 내 샵에 추가되었습니다'),
-          ],
+  Future<void> _addToMyShop(ProductModel product) async {
+    if (_currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('로그인이 필요합니다'),
+          backgroundColor: Colors.red,
         ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        action: SnackBarAction(
-          label: '내 샵 보기',
-          textColor: Colors.white,
-          onPressed: () {
-            context.pop(); // 현재 화면 닫기
-            // TODO: 내 샵 화면으로 이동하고 대신팔기 탭 선택
-          },
-        ),
-      ),
-    );
+      );
+      return;
+    }
+
+    try {
+      // 사용자의 샵 정보 가져오기
+      final userShop = await _shopService.getShopByOwnerId(_currentUser!.id);
+      if (userShop == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('샵 정보를 찾을 수 없습니다'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // 대신팔기 상품 추가
+      final success = await _shopService.addResaleProduct(
+        shopId: userShop.id,
+        productId: product.id,
+        commissionPercentage: product.resaleFeePercentage ?? 0,
+      );
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('${product.title}이(가) 내 샵에 추가되었습니다'),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              action: SnackBarAction(
+                label: '내 샵 보기',
+                textColor: Colors.white,
+                onPressed: () {
+                  context.pop(); // 현재 화면 닫기
+                  context.push('/shop/my'); // 내 샵으로 이동
+                },
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('상품 추가에 실패했습니다'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 
 class _ResaleProductCard extends StatelessWidget {
-  final String title;
-  final String price;
-  final String originalSeller;
-  final double commissionRate;
-  final String? imageUrl;
+  final ProductModel product;
   final VoidCallback onAddToShop;
 
   const _ResaleProductCard({
-    required this.title,
-    required this.price,
-    required this.originalSeller,
-    required this.commissionRate,
-    this.imageUrl,
+    required this.product,
     required this.onAddToShop,
   });
 
@@ -310,14 +449,14 @@ class _ResaleProductCard extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(12),
                 ),
-                image: imageUrl != null
+                image: product.images.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(imageUrl!),
+                        image: NetworkImage(product.images.first),
                         fit: BoxFit.cover,
                       )
                     : null,
               ),
-              child: imageUrl == null
+              child: product.images.isEmpty
                   ? Icon(
                       Icons.storefront,
                       color: Colors.grey[600],
@@ -336,7 +475,7 @@ class _ResaleProductCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
+                    product.title,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -346,7 +485,7 @@ class _ResaleProductCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    price,
+                    product.formattedPrice,
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -358,7 +497,7 @@ class _ResaleProductCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '판매자: $originalSeller',
+                          '판매자: ${product.sellerName ?? '알 수 없음'}',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey[600],
@@ -381,7 +520,7 @@ class _ResaleProductCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '수수료 ${commissionRate.toStringAsFixed(1)}%',
+                          '수수료 ${product.resaleFeePercentage?.toStringAsFixed(1) ?? '0'}%',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.orange[800],

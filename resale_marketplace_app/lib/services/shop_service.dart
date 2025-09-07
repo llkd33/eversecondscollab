@@ -6,26 +6,59 @@ import '../models/product_model.dart';
 class ShopService {
   final SupabaseClient _client = SupabaseConfig.client;
 
-  // 샵 생성 (회원가입 시 자동 생성)
+  // 샵 생성 (회원가입 시 자동 생성) - DB 트리거에 의해 자동 생성되므로 수동 생성은 불필요
   Future<ShopModel?> createShop({
     required String ownerId,
     required String name,
     String? description,
   }) async {
     try {
-      // 샵 URL 생성
-      final shareUrl = ShopModel.generateShareUrl(ownerId);
+      // 이미 존재하는 샵이 있는지 확인
+      final existingShop = await getShopByOwnerId(ownerId);
+      if (existingShop != null) {
+        return existingShop;
+      }
+
+      // 샵 URL 생성 (사용자 ID 기반)
+      final shareUrl = 'shop-${ownerId.replaceAll('-', '').substring(0, 12)}';
       
       final response = await _client.from('shops').insert({
         'owner_id': ownerId,
         'name': name,
-        'description': description,
+        'description': description ?? '$name님의 개인 샵입니다.',
         'share_url': shareUrl,
       }).select().single();
+
+      // 사용자 테이블의 shop_id 업데이트
+      await _client
+          .from('users')
+          .update({'shop_id': response['id']})
+          .eq('id', ownerId);
 
       return ShopModel.fromJson(response);
     } catch (e) {
       print('Error creating shop: $e');
+      return null;
+    }
+  }
+
+  // 회원가입 시 자동 샵 생성 확인 및 생성
+  Future<ShopModel?> ensureUserShop(String userId, String userName) async {
+    try {
+      // 기존 샵 확인
+      final existingShop = await getShopByOwnerId(userId);
+      if (existingShop != null) {
+        return existingShop;
+      }
+
+      // 샵이 없으면 생성
+      return await createShop(
+        ownerId: userId,
+        name: '$userName의 샵',
+        description: '$userName님의 개인 샵입니다.',
+      );
+    } catch (e) {
+      print('Error ensuring user shop: $e');
       return null;
     }
   }
@@ -143,16 +176,17 @@ class ShopService {
   // 샵의 대신팔기 상품 조회
   Future<List<ProductModel>> getShopResaleProducts(String shopId) async {
     try {
-      // 대신팔기 상품은 shop_resale_products 테이블을 통해 관리
+      // 대신팔기 상품은 shop_products 테이블을 통해 관리
       final response = await _client
-          .from('shop_resale_products')
+          .from('shop_products')
           .select('''
             products!product_id (
               *,
               users!seller_id(name, profile_image)
             )
           ''')
-          .eq('shop_id', shopId);
+          .eq('shop_id', shopId)
+          .eq('is_resale', true);
 
       return (response as List).map((item) {
         final productData = item['products'];
@@ -197,11 +231,10 @@ class ShopService {
       final commissionAmount = (price * commissionPercentage / 100).round();
 
       // 대신팔기 관계 생성
-      await _client.from('shop_resale_products').insert({
+      await _client.from('shop_products').insert({
         'shop_id': shopId,
         'product_id': productId,
-        'commission_percentage': commissionPercentage,
-        'commission_amount': commissionAmount,
+        'is_resale': true,
       });
 
       return true;
@@ -218,10 +251,11 @@ class ShopService {
   }) async {
     try {
       await _client
-          .from('shop_resale_products')
+          .from('shop_products')
           .delete()
           .eq('shop_id', shopId)
-          .eq('product_id', productId);
+          .eq('product_id', productId)
+          .eq('is_resale', true);
 
       return true;
     } catch (e) {
@@ -245,9 +279,10 @@ class ShopService {
 
       // 대신팔기 상품 수
       final resaleProductCount = await _client
-          .from('shop_resale_products')
+          .from('shop_products')
           .select('id')
           .eq('shop_id', shopId)
+          .eq('is_resale', true)
           .count();
 
       // 총 거래 수

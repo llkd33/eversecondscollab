@@ -119,51 +119,134 @@ class ChatService {
     }
   }
 
-  // 내 채팅방 목록 조회
+  // 내 채팅방 목록 조회 (최적화된 버전)
   Future<List<ChatModel>> getMyChats(String userId) async {
+    try {
+      // 데이터베이스 함수를 사용하여 최적화된 쿼리 실행
+      final response = await _client
+          .rpc('get_user_chats', params: {'user_id': userId});
+
+      return (response as List).map((item) {
+        return ChatModel.fromJson({
+          'id': item['chat_id'],
+          'participants': item['participants'],
+          'product_id': item['product_id'],
+          'reseller_id': item['reseller_id'],
+          'is_resale_chat': item['is_resale_chat'],
+          'original_seller_id': item['original_seller_id'],
+          'created_at': item['created_at'],
+          'updated_at': item['updated_at'],
+          'product_title': item['product_title'],
+          'product_image': item['product_image'],
+          'product_price': item['product_price'],
+          'last_message': item['last_message'],
+          'last_message_time': item['last_message_time'],
+          'unread_count': item['unread_count'],
+        });
+      }).toList();
+    } catch (e) {
+      print('Error getting my chats: $e');
+      // Fallback to basic query if function fails
+      return await _getMyChatsBasic(userId);
+    }
+  }
+
+  // 기본 채팅방 목록 조회 (fallback)
+  Future<List<ChatModel>> _getMyChatsBasic(String userId) async {
     try {
       final response = await _client
           .from('chats')
-          .select('*, products(title, images), messages(content, created_at, sender_id)')
+          .select('*, products(title, images, price)')
           .contains('participants', [userId])
           .order('updated_at', ascending: false);
 
-      return (response as List).map((item) {
+      List<ChatModel> chats = [];
+      
+      for (final item in response as List) {
         final chat = ChatModel.fromJson(item);
         
-        // 상품 정보
+        // 상품 정보 추가
+        ChatModel updatedChat = chat;
         if (item['products'] != null) {
           final product = item['products'];
-          chat.copyWith(
+          updatedChat = chat.copyWith(
             productTitle: product['title'],
             productImage: product['images']?.isNotEmpty == true 
                 ? product['images'][0] 
                 : null,
+            productPrice: product['price'],
           );
         }
         
-        // 마지막 메시지 정보
-        if (item['messages'] != null && (item['messages'] as List).isNotEmpty) {
-          final messages = item['messages'] as List;
-          final lastMsg = messages.last;
-          
-          // 읽지 않은 메시지 개수
-          final unreadCount = messages
-              .where((m) => m['sender_id'] != userId)
-              .length;
-          
-          return chat.copyWith(
-            lastMessage: lastMsg['content'],
-            lastMessageTime: DateTime.parse(lastMsg['created_at']),
+        // 마지막 메시지 정보 조회
+        final lastMessage = await _getLastMessage(chat.id);
+        if (lastMessage != null) {
+          final unreadCount = await _getUnreadCount(chat.id, userId);
+          updatedChat = updatedChat.copyWith(
+            lastMessage: lastMessage.content,
+            lastMessageTime: lastMessage.createdAt,
             unreadCount: unreadCount,
           );
         }
         
-        return chat;
-      }).toList();
+        chats.add(updatedChat);
+      }
+      
+      return chats;
     } catch (e) {
-      print('Error getting my chats: $e');
+      print('Error getting basic chats: $e');
       return [];
+    }
+  }
+
+  // 마지막 메시지 조회
+  Future<MessageModel?> _getLastMessage(String chatId) async {
+    try {
+      final response = await _client
+          .from('messages')
+          .select()
+          .eq('chat_id', chatId)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      
+      if (response != null) {
+        return MessageModel.fromJson(response);
+      }
+      return null;
+    } catch (e) {
+      print('Error getting last message: $e');
+      return null;
+    }
+  }
+
+  // 읽지 않은 메시지 개수 조회
+  Future<int> _getUnreadCount(String chatId, String userId) async {
+    try {
+      // 사용자의 마지막 읽음 시간 조회
+      final readStatus = await _client
+          .from('user_chat_read_status')
+          .select('last_read_at')
+          .eq('user_id', userId)
+          .eq('chat_id', chatId)
+          .maybeSingle();
+      
+      final lastReadAt = readStatus != null && readStatus['last_read_at'] != null
+          ? DateTime.parse(readStatus['last_read_at'])
+          : DateTime.fromMillisecondsSinceEpoch(0);
+      
+      // 마지막 읽음 시간 이후의 다른 사용자 메시지 개수
+      final response = await _client
+          .from('messages')
+          .select('*')
+          .eq('chat_id', chatId)
+          .neq('sender_id', userId)
+          .gt('created_at', lastReadAt.toIso8601String());
+      
+      return (response as List).length;
+    } catch (e) {
+      print('Error getting unread count: $e');
+      return 0;
     }
   }
 
@@ -195,8 +278,40 @@ class ChatService {
     }
   }
 
-  // 채팅방 메시지 목록 조회
+  // 채팅방 메시지 목록 조회 (최적화된 버전)
   Future<List<MessageModel>> getChatMessages(String chatId, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    try {
+      // 데이터베이스 함수를 사용하여 최적화된 쿼리 실행
+      final response = await _client.rpc('get_chat_messages', params: {
+        'chat_id_param': chatId,
+        'limit_param': limit,
+        'offset_param': offset,
+      });
+
+      return (response as List).map((item) {
+        return MessageModel.fromJson({
+          'id': item['message_id'],
+          'chat_id': item['chat_id'],
+          'sender_id': item['sender_id'],
+          'content': item['content'],
+          'message_type': item['message_type'],
+          'created_at': item['created_at'],
+          'sender_name': item['sender_name'],
+          'sender_image': item['sender_profile_image'],
+        });
+      }).toList().reversed.toList(); // 시간순으로 정렬
+    } catch (e) {
+      print('Error getting chat messages with function: $e');
+      // Fallback to basic query
+      return await _getChatMessagesBasic(chatId, limit: limit, offset: offset);
+    }
+  }
+
+  // 기본 메시지 조회 (fallback)
+  Future<List<MessageModel>> _getChatMessagesBasic(String chatId, {
     int limit = 50,
     int offset = 0,
   }) async {
@@ -222,7 +337,7 @@ class ChatService {
         return message;
       }).toList().reversed.toList(); // 시간순으로 정렬
     } catch (e) {
-      print('Error getting chat messages: $e');
+      print('Error getting basic chat messages: $e');
       return [];
     }
   }
@@ -235,16 +350,23 @@ class ChatService {
     // 기존 구독 해제
     unsubscribeFromChat(chatId);
 
-    // 새 구독 생성
+    // 새 구독 생성 - Supabase Realtime을 사용한 실시간 구독
     final subscription = _client
         .from('messages')
         .stream(primaryKey: ['id'])
         .eq('chat_id', chatId)
+        .order('created_at')
         .listen((List<Map<String, dynamic>> data) {
           if (data.isNotEmpty) {
-            // 가장 최근 메시지만 처리
-            final latestMessage = MessageModel.fromJson(data.last);
-            onNewMessage(latestMessage);
+            // 새로운 메시지들을 처리
+            for (final messageData in data) {
+              try {
+                final message = MessageModel.fromJson(messageData);
+                onNewMessage(message);
+              } catch (e) {
+                print('Error parsing message: $e');
+              }
+            }
           }
         });
 
@@ -376,49 +498,132 @@ class ChatService {
     }
   }
 
+  // 채팅방 읽음 상태 업데이트
+  Future<void> markChatAsRead(String chatId, String userId) async {
+    try {
+      await _client
+          .from('user_chat_read_status')
+          .upsert({
+            'user_id': userId,
+            'chat_id': chatId,
+            'last_read_at': DateTime.now().toIso8601String(),
+          });
+    } catch (e) {
+      print('Error marking chat as read: $e');
+    }
+  }
+
+  // 채팅방 참여자 정보 조회
+  Future<List<Map<String, dynamic>>> getChatParticipants(String chatId) async {
+    try {
+      final chat = await getChatById(chatId);
+      if (chat == null) return [];
+
+      final response = await _client
+          .from('users')
+          .select('id, name, profile_image')
+          .inFilter('id', chat.participants);
+
+      return response as List<Map<String, dynamic>>;
+    } catch (e) {
+      print('Error getting chat participants: $e');
+      return [];
+    }
+  }
+
+  // 채팅방 온라인 상태 확인 (실시간 presence)
+  Future<Map<String, bool>> getChatPresence(String chatId) async {
+    try {
+      // Supabase Realtime Presence를 사용하여 온라인 상태 확인
+      // 실제 구현에서는 Presence API를 사용해야 함
+      final chat = await getChatById(chatId);
+      if (chat == null) return {};
+
+      // 임시로 모든 참여자를 온라인으로 표시 (실제로는 Presence API 사용)
+      Map<String, bool> presence = {};
+      for (String userId in chat.participants) {
+        presence[userId] = true; // 실제로는 Presence 상태 확인
+      }
+      
+      return presence;
+    } catch (e) {
+      print('Error getting chat presence: $e');
+      return {};
+    }
+  }
+
+  // 타이핑 상태 전송
+  Future<void> sendTypingStatus(String chatId, String userId, bool isTyping) async {
+    try {
+      // Supabase Realtime Broadcast를 사용하여 타이핑 상태 전송
+      final channel = _client.channel('chat:$chatId');
+      
+      await channel.sendBroadcastMessage(
+        event: 'typing',
+        payload: {
+          'user_id': userId,
+          'is_typing': isTyping,
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      );
+    } catch (e) {
+      print('Error sending typing status: $e');
+    }
+  }
+
+  // 타이핑 상태 구독
+  void subscribeToTyping(String chatId, Function(String userId, bool isTyping) onTypingChange) {
+    try {
+      final channel = _client.channel('chat:$chatId');
+      
+      channel.onBroadcast(
+        event: 'typing',
+        callback: (payload) {
+          final userId = payload['user_id'] as String?;
+          final isTyping = payload['is_typing'] as bool?;
+          
+          if (userId != null && isTyping != null) {
+            onTypingChange(userId, isTyping);
+          }
+        },
+      );
+      
+      channel.subscribe();
+    } catch (e) {
+      print('Error subscribing to typing: $e');
+    }
+  }
+
+  // 채팅방 통계 조회
+  Future<Map<String, dynamic>> getChatStats(String chatId) async {
+    try {
+      final allMessages = await _client
+          .from('messages')
+          .select('message_type')
+          .eq('chat_id', chatId);
+
+      final totalMessages = (allMessages as List).length;
+      final imageMessages = allMessages.where((m) => m['message_type'] == 'image').length;
+      final textMessages = totalMessages - imageMessages;
+
+      return {
+        'total_messages': totalMessages,
+        'image_messages': imageMessages,
+        'text_messages': textMessages,
+      };
+    } catch (e) {
+      print('Error getting chat stats: $e');
+      return {
+        'total_messages': 0,
+        'image_messages': 0,
+        'text_messages': 0,
+      };
+    }
+  }
+
   // 리소스 정리
   void dispose() {
     unsubscribeAll();
   }
 }
 
-// 시스템 메시지 상수
-class SystemMessages {
-  static const String safeTransactionGuide = '''
-안전거래 진행 순서:
-1. 구매자가 입금
-2. 판매자가 입금 확인
-3. 판매자가 상품 발송
-4. 구매자가 상품 수령 확인
-5. 거래 완료
-''';
-
-  static const String depositGuide = '''
-💳 입금 계좌 정보
-은행: 우리은행
-계좌번호: 1002-XXX-XXXXXX
-예금주: 에버세컨즈
-금액: 거래 금액 + 수수료
-''';
-
-  static String safeTransactionNotice(String resellerName) => '''
-🔔 대신판매 안내
-$resellerName님이 판매를 대행하고 있습니다.
-대신판매 수수료가 추가됩니다.
-''';
-
-  static const String depositConfirmed = '''
-✅ 입금이 확인되었습니다.
-판매자에게 배송 준비를 요청했습니다.
-''';
-
-  static const String shippingStarted = '''
-📦 상품이 발송되었습니다.
-운송장 번호를 확인해주세요.
-''';
-
-  static const String transactionCompleted = '''
-🎉 거래가 완료되었습니다!
-리뷰를 남겨주시면 다른 구매자에게 도움이 됩니다.
-''';
-}

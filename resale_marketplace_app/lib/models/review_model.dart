@@ -5,6 +5,8 @@ class ReviewModel {
   final String transactionId;
   final int rating; // 1-5 별점
   final String comment;
+  final List<String>? tags; // 평가 태그
+  final List<String>? images; // 리뷰 이미지
   final DateTime createdAt;
   
   // 추가 정보
@@ -21,6 +23,8 @@ class ReviewModel {
     required this.transactionId,
     required this.rating,
     required this.comment,
+    this.tags,
+    this.images,
     required this.createdAt,
     this.reviewerName,
     this.reviewerImage,
@@ -52,6 +56,8 @@ class ReviewModel {
       transactionId: json['transaction_id'],
       rating: json['rating'],
       comment: json['comment'],
+      tags: json['tags'] != null ? List<String>.from(json['tags']) : null,
+      images: json['images'] != null ? List<String>.from(json['images']) : null,
       createdAt: DateTime.parse(json['created_at']),
       reviewerName: json['reviewer_name'],
       reviewerImage: json['reviewer_image'],
@@ -70,6 +76,8 @@ class ReviewModel {
       'transaction_id': transactionId,
       'rating': rating,
       'comment': comment,
+      'tags': tags,
+      'images': images,
       'created_at': createdAt.toIso8601String(),
       if (reviewerName != null) 'reviewer_name': reviewerName,
       if (reviewerImage != null) 'reviewer_image': reviewerImage,
@@ -87,6 +95,8 @@ class ReviewModel {
     String? transactionId,
     int? rating,
     String? comment,
+    List<String>? tags,
+    List<String>? images,
     DateTime? createdAt,
     String? reviewerName,
     String? reviewerImage,
@@ -101,6 +111,8 @@ class ReviewModel {
       transactionId: transactionId ?? this.transactionId,
       rating: rating ?? this.rating,
       comment: comment ?? this.comment,
+      tags: tags ?? this.tags,
+      images: images ?? this.images,
       createdAt: createdAt ?? this.createdAt,
       reviewerName: reviewerName ?? this.reviewerName,
       reviewerImage: reviewerImage ?? this.reviewerImage,

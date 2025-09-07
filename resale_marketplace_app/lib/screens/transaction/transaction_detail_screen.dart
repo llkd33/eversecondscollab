@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../../services/transaction_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/transaction_model.dart';
@@ -265,6 +266,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
+  }
+  
+  // 리뷰 목록으로 이동
+  void _navigateToReviewList() {
+    context.push('/transaction/${widget.transactionId}/reviews');
   }
   
   @override
@@ -745,76 +751,115 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
   
   Widget _buildActionButtons(ThemeData theme) {
-    if (_transaction!.status != TransactionStatus.ongoing) {
-      return const SizedBox.shrink();
-    }
-    
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 안전거래 액션 버튼
-          if (_transaction!.isSafeTransaction) ...[
-            if (isBuyer) ...[
-              // 결제 확인 버튼
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _confirmPayment,
-                  icon: const Icon(Icons.payment),
-                  label: const Text('결제 확인'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // 수령 확인 버튼
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _confirmReceipt,
-                  icon: const Icon(Icons.check_circle),
-                  label: const Text('수령 확인'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    backgroundColor: Colors.green,
-                  ),
-                ),
-              ),
-            ],
-            if (isSeller) ...[
-              // 배송 시작 버튼
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _startShipping,
-                  icon: const Icon(Icons.local_shipping),
-                  label: const Text('배송 시작'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ],
-          ],
-          const SizedBox(height: 16),
-          // 거래 취소 버튼
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _cancelTransaction,
-              icon: const Icon(Icons.cancel),
-              label: const Text('거래 취소'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
-              ),
-            ),
-          ),
+          // 거래 완료 후 리뷰 작성 버튼
+          if (_transaction!.status == TransactionStatus.completed)
+            _buildReviewSection(theme),
+          
+          // 진행 중인 거래 액션 버튼
+          if (_transaction!.status == TransactionStatus.ongoing)
+            _buildOngoingTransactionActions(theme),
         ],
       ),
+    );
+  }
+  
+  Widget _buildReviewSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '거래 후기',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _navigateToReviewList(),
+            icon: const Icon(Icons.rate_review),
+            label: const Text('리뷰 작성 및 확인'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              backgroundColor: theme.colorScheme.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+  
+  Widget _buildOngoingTransactionActions(ThemeData theme) {
+    
+    return Column(
+      children: [
+        // 안전거래 액션 버튼
+        if (_transaction!.isSafeTransaction) ...[
+          if (isBuyer) ...[
+            // 결제 확인 버튼
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _confirmPayment,
+                icon: const Icon(Icons.payment),
+                label: const Text('결제 확인'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 수령 확인 버튼
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _confirmReceipt,
+                icon: const Icon(Icons.check_circle),
+                label: const Text('수령 확인'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: Colors.green,
+                ),
+              ),
+            ),
+          ],
+          if (isSeller) ...[
+            // 배송 시작 버튼
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _startShipping,
+                icon: const Icon(Icons.local_shipping),
+                label: const Text('배송 시작'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ],
+        const SizedBox(height: 16),
+        // 거래 취소 버튼
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _cancelTransaction,
+            icon: const Icon(Icons.cancel),
+            label: const Text('거래 취소'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Colors.red),
+            ),
+          ),
+        ),
+      ],
     );
   }
   

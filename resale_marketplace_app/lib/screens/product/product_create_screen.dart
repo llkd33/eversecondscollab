@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_app_bar.dart';
-import '../../models/product_model.dart';
+
 import '../../services/product_service.dart';
 import '../../services/user_service.dart';
 
@@ -30,8 +30,8 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
   String _selectedCategory = '의류';
   bool _resaleEnabled = false;
   double _resaleFeePercentage = 10.0;
-  List<File> _imageFiles = [];
-  List<String> _uploadedImageUrls = [];
+  final List<File> _imageFiles = [];
+  final List<String> _uploadedImageUrls = [];
   bool _isLoading = false;
   
   final List<String> _categories = [
@@ -86,45 +86,85 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 이미지 선택 섹션
-                    _buildImageSection(),
-                    const Divider(height: 1),
-                    
-                    // 기본 정보 입력
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildTitleField(),
-                          const SizedBox(height: 20),
-                          _buildCategorySelector(),
-                          const SizedBox(height: 20),
-                          _buildPriceField(),
-                          const SizedBox(height: 20),
-                          _buildDescriptionField(),
-                        ],
-                      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 이미지 선택 섹션
+                  _buildImageSection(),
+                  const Divider(height: 1),
+                  
+                  // 기본 정보 입력
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTitleField(),
+                        const SizedBox(height: 20),
+                        _buildCategorySelector(),
+                        const SizedBox(height: 20),
+                        _buildPriceField(),
+                        const SizedBox(height: 20),
+                        _buildDescriptionField(),
+                      ],
                     ),
-                    
-                    const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
-                    
-                    // 대신팔기 설정
-                    _buildResaleSection(),
-                    
-                    const SizedBox(height: 100),
-                  ],
+                  ),
+                  
+                  const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
+                  
+                  // 대신팔기 설정
+                  _buildResaleSection(),
+                  
+                  const SizedBox(height: 100),
+                ],
+              ),
+            ),
+          ),
+          
+          // 로딩 오버레이
+          if (_isLoading)
+            Container(
+              color: Colors.black.withValues(alpha: 0.5),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '상품을 등록하고 있습니다...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '이미지 업로드 및 상품 정보를 저장 중입니다.\n잠시만 기다려주세요.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
+        ],
+      ),
     );
   }
   
@@ -163,7 +203,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
               ],
             ),
           ),
-          Container(
+          SizedBox(
             height: 104,
             child: ListView(
               scrollDirection: Axis.horizontal,
@@ -209,14 +249,20 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
               padding: const EdgeInsets.only(left: 12),
               child: Stack(
                 children: [
-                  Container(
-                    width: 88,
-                    height: 88,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      image: DecorationImage(
-                        image: FileImage(file),
-                        fit: BoxFit.cover,
+                  GestureDetector(
+                    onTap: () => _moveImageToFirst(index),
+                    child: Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: FileImage(file),
+                          fit: BoxFit.cover,
+                        ),
+                        border: index == 0 
+                            ? Border.all(color: AppTheme.primaryColor, width: 2)
+                            : null,
                       ),
                     ),
                   ),
@@ -254,7 +300,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                         width: 22,
                         height: 22,
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -268,7 +314,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
               ],
             ),
           ),
@@ -347,12 +393,17 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         _ThousandsSeparatorInputFormatter(),
       ],
       decoration: InputDecoration(
-        hintText: '가격',
+        hintText: '가격 (예: 50,000)',
         suffixText: '원',
         border: InputBorder.none,
         suffixStyle: TextStyle(
           fontSize: 16,
           color: Colors.grey[700],
+        ),
+        helperText: '최소 100원 이상, 최대 1억원 이하',
+        helperStyle: TextStyle(
+          fontSize: 12,
+          color: Colors.grey[600],
         ),
       ),
       style: const TextStyle(fontSize: 16),
@@ -366,8 +417,14 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
           return '가격을 입력해주세요';
         }
         final price = int.tryParse(value.replaceAll(',', ''));
-        if (price == null || price < 100) {
-          return '100원 이상 입력해주세요';
+        if (price == null) {
+          return '올바른 숫자를 입력해주세요';
+        }
+        if (price < 100) {
+          return '최소 100원 이상 입력해주세요';
+        }
+        if (price > 100000000) {
+          return '최대 1억원 이하로 입력해주세요';
         }
         return null;
       },
@@ -375,24 +432,73 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
   }
   
   Widget _buildDescriptionField() {
-    return TextFormField(
-      controller: _descriptionController,
-      maxLines: 5,
-      maxLength: 500,
-      decoration: const InputDecoration(
-        hintText: '상품 설명을 입력해주세요.\n\n브랜드, 모델명, 구매시기, 사용감 등을 작성하면 판매가 더 쉬워요.',
-        border: InputBorder.none,
-      ),
-      style: const TextStyle(fontSize: 16, height: 1.4),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return '상품 설명을 입력해주세요';
-        }
-        if (value.length < 10) {
-          return '상품 설명은 10자 이상 입력해주세요';
-        }
-        return null;
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _descriptionController,
+          maxLines: 5,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            hintText: '상품 설명을 입력해주세요.\n\n브랜드, 모델명, 구매시기, 사용감 등을 작성하면 판매가 더 쉬워요.',
+            border: InputBorder.none,
+            counterStyle: TextStyle(fontSize: 12),
+          ),
+          style: const TextStyle(fontSize: 16, height: 1.4),
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return '상품 설명을 입력해주세요';
+            }
+            if (value.trim().length < 10) {
+              return '상품 설명은 10자 이상 입력해주세요';
+            }
+            if (value.trim().length > 500) {
+              return '상품 설명은 500자 이하로 입력해주세요';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FA),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, 
+                    size: 16, 
+                    color: Colors.orange[600]
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '상품 설명 작성 팁',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange[600],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '• 브랜드, 모델명을 정확히 기재해주세요\n• 구매 시기와 사용 기간을 알려주세요\n• 사용감이나 하자 여부를 솔직히 작성해주세요\n• 교환/환불 정책을 명시해주세요',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[700],
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
   
@@ -478,7 +584,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                             activeTrackColor: AppTheme.primaryColor,
                             inactiveTrackColor: Colors.grey[300],
                             thumbColor: AppTheme.primaryColor,
-                            overlayColor: AppTheme.primaryColor.withOpacity(0.2),
+                            overlayColor: AppTheme.primaryColor.withValues(alpha: 0.2),
                           ),
                           child: Slider(
                             value: _resaleFeePercentage,
@@ -559,13 +665,40 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
   }
   
   void _updateResaleFee() {
-    if (_priceController.text.isEmpty) return;
+    if (!_resaleEnabled) {
+      setState(() {
+        _resaleFeeController.text = '';
+      });
+      return;
+    }
+    
+    if (_priceController.text.isEmpty) {
+      setState(() {
+        _resaleFeeController.text = '';
+      });
+      return;
+    }
     
     final price = int.tryParse(_priceController.text.replaceAll(',', '')) ?? 0;
+    if (price <= 0) {
+      setState(() {
+        _resaleFeeController.text = '';
+      });
+      return;
+    }
+    
+    // 수수료 계산
     final fee = (price * _resaleFeePercentage / 100).round();
     
+    // 최소 수수료 보장 (100원)
+    final finalFee = fee < 100 ? 100 : fee;
+    
+    // 수수료가 상품 가격을 초과하지 않도록 제한
+    final maxFee = (price * 0.5).round(); // 최대 50%
+    final limitedFee = finalFee > maxFee ? maxFee : finalFee;
+    
     setState(() {
-      _resaleFeeController.text = _formatNumber(fee);
+      _resaleFeeController.text = _formatNumber(limitedFee);
     });
   }
   
@@ -580,7 +713,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
   void _showCategoryPicker() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Container(
+      builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * 0.5,
         child: Column(
           children: [
@@ -632,20 +765,106 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
   
   Future<void> _pickImages() async {
     if (_imageFiles.length >= 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('최대 10장까지 선택 가능합니다')),
-      );
+      _showErrorMessage('최대 10장까지 선택 가능합니다');
       return;
     }
     
-    final List<XFile> images = await _picker.pickMultiImage();
-    
-    if (images.isNotEmpty) {
-      setState(() {
-        final remainingSlots = 10 - _imageFiles.length;
-        final imagesToAdd = images.take(remainingSlots);
-        _imageFiles.addAll(imagesToAdd.map((x) => File(x.path)));
-      });
+    try {
+      final List<XFile> images = await _picker.pickMultiImage();
+      
+      if (images.isEmpty) return;
+      
+      // 이미지 검증 및 필터링
+      const maxFileSize = 10 * 1024 * 1024; // 10MB
+      final validImages = <XFile>[];
+      final invalidImages = <String>[];
+      
+      for (final image in images) {
+        final file = File(image.path);
+        
+        // 파일 존재 여부 확인
+        if (!await file.exists()) {
+          invalidImages.add('${image.name}: 파일을 찾을 수 없습니다');
+          continue;
+        }
+        
+        // 파일 크기 검증
+        final fileSize = await file.length();
+        if (fileSize > maxFileSize) {
+          invalidImages.add('${image.name}: 파일 크기가 너무 큽니다 (최대 10MB)');
+          continue;
+        }
+        
+        // 파일 형식 검증
+        final extension = image.path.split('.').last.toLowerCase();
+        final validExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+        if (!validExtensions.contains(extension)) {
+          invalidImages.add('${image.name}: 지원하지 않는 형식입니다 (jpg, png, webp만 가능)');
+          continue;
+        }
+        
+        validImages.add(image);
+      }
+      
+      // 유효하지 않은 이미지에 대한 알림
+      if (invalidImages.isNotEmpty && mounted) {
+        final message = invalidImages.length == 1 
+            ? invalidImages.first
+            : '${invalidImages.length}개 이미지에 문제가 있습니다:\n${invalidImages.take(3).join('\n')}${invalidImages.length > 3 ? '\n...' : ''}';
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      
+      // 유효한 이미지 추가
+      if (validImages.isNotEmpty) {
+        setState(() {
+          final remainingSlots = 10 - _imageFiles.length;
+          final imagesToAdd = validImages.take(remainingSlots);
+          _imageFiles.addAll(imagesToAdd.map((x) => File(x.path)));
+        });
+        
+        // 추가된 이미지 수 알림
+        final addedCount = validImages.take(10 - (_imageFiles.length - validImages.length)).length;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${addedCount}장의 이미지가 추가되었습니다'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          
+          // 최대 개수 초과 시 알림
+          if (validImages.length > (10 - (_imageFiles.length - addedCount))) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('최대 10장까지만 선택할 수 있어 일부 이미지가 제외되었습니다'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Image picker error: $e');
+      if (mounted) {
+        String errorMessage = '이미지 선택 중 오류가 발생했습니다';
+        
+        if (e.toString().contains('permission')) {
+          errorMessage = '갤러리 접근 권한이 필요합니다. 설정에서 권한을 허용해주세요.';
+        } else if (e.toString().contains('camera')) {
+          errorMessage = '카메라 접근에 문제가 있습니다. 다시 시도해주세요.';
+        }
+        
+        _showErrorMessage(errorMessage);
+      }
     }
   }
   
@@ -656,6 +875,27 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         _uploadedImageUrls.removeAt(index);
       }
     });
+  }
+  
+  void _moveImageToFirst(int index) {
+    if (index == 0) return;
+    
+    setState(() {
+      final image = _imageFiles.removeAt(index);
+      _imageFiles.insert(0, image);
+      
+      if (_uploadedImageUrls.length > index) {
+        final url = _uploadedImageUrls.removeAt(index);
+        _uploadedImageUrls.insert(0, url);
+      }
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('대표 이미지로 설정되었습니다'),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
   
   bool _hasUnsavedChanges() {
@@ -696,7 +936,43 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
       return;
     }
     
-    // 이미지는 선택사항이므로 체크 제거
+    // 추가 검증
+    if (_titleController.text.trim().isEmpty) {
+      _showErrorMessage('상품명을 입력해주세요');
+      return;
+    }
+    
+    if (_priceController.text.isEmpty) {
+      _showErrorMessage('가격을 입력해주세요');
+      return;
+    }
+    
+    if (_descriptionController.text.trim().isEmpty) {
+      _showErrorMessage('상품 설명을 입력해주세요');
+      return;
+    }
+    
+    // 이미지 필수 검증 (최소 1장)
+    if (_imageFiles.isEmpty) {
+      _showErrorMessage('상품 이미지를 최소 1장 이상 등록해주세요');
+      return;
+    }
+    
+    // 대신팔기 설정 검증
+    if (_resaleEnabled) {
+      if (_resaleFeePercentage < 5 || _resaleFeePercentage > 30) {
+        _showErrorMessage('대신팔기 수수료는 5%~30% 사이로 설정해주세요');
+        return;
+      }
+      
+      final price = int.tryParse(_priceController.text.replaceAll(',', '')) ?? 0;
+      final calculatedFee = (price * _resaleFeePercentage / 100).round();
+      
+      if (calculatedFee < 100) {
+        _showErrorMessage('대신팔기 수수료는 최소 100원 이상이어야 합니다');
+        return;
+      }
+    }
     
     setState(() {
       _isLoading = true;
@@ -706,21 +982,34 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
       // 현재 사용자 가져오기
       final currentUser = await _userService.getCurrentUser();
       if (currentUser == null) {
-        throw Exception('로그인이 필요합니다');
+        throw Exception('로그인이 필요합니다. 다시 로그인해주세요.');
       }
       
-      // 이미지 업로드 (이미지가 있는 경우에만)
+      // 이미지 업로드
+      List<String> uploadedUrls = [];
       if (_imageFiles.isNotEmpty) {
-        _uploadedImageUrls = await _productService.uploadProductImages(
-          _imageFiles,
-          currentUser.id,
-        );
+        try {
+          uploadedUrls = await _productService.uploadProductImages(
+            _imageFiles,
+            currentUser.id,
+          );
+          
+          if (uploadedUrls.isEmpty) {
+            throw Exception('이미지 업로드에 실패했습니다. 네트워크 연결을 확인해주세요.');
+          }
+          
+          if (uploadedUrls.length != _imageFiles.length) {
+            throw Exception('일부 이미지 업로드에 실패했습니다. 다시 시도해주세요.');
+          }
+        } catch (e) {
+          throw Exception('이미지 업로드 실패: ${e.toString().replaceAll('Exception: ', '')}');
+        }
       }
       
       // 상품 생성
       final price = int.parse(_priceController.text.replaceAll(',', ''));
       final resaleFee = _resaleEnabled
-          ? int.parse(_resaleFeeController.text.replaceAll(',', ''))
+          ? (price * _resaleFeePercentage / 100).round()
           : 0;
       
       final product = await _productService.createProduct(
@@ -729,32 +1018,67 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         description: _descriptionController.text.trim(),
         category: _selectedCategory,
         sellerId: currentUser.id,
-        images: _uploadedImageUrls,
+        images: uploadedUrls,
         resaleEnabled: _resaleEnabled,
         resaleFee: resaleFee,
         resaleFeePercentage: _resaleEnabled ? _resaleFeePercentage : 0,
       );
       
       if (product != null && mounted) {
+        // 성공 메시지 표시
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('상품이 등록되었습니다'),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '상품이 성공적으로 등록되었습니다!',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (_resaleEnabled)
+                        Text(
+                          '대신팔기 수수료: ${_resaleFeePercentage.toInt()}% (${_formatNumber(resaleFee)}원)',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
           ),
         );
         
+        // 상품 등록 완료 후 이전 화면으로 돌아가면서 결과 전달
         context.pop(product);
       } else {
-        throw Exception('상품 등록에 실패했습니다');
+        throw Exception('상품 등록에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (e) {
+      // 에러 로깅
+      print('Product creation error: $e');
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('상품 등록 실패: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        String errorMessage = e.toString().replaceAll('Exception: ', '');
+        
+        // 특정 에러에 대한 사용자 친화적 메시지
+        if (errorMessage.contains('network') || errorMessage.contains('connection')) {
+          errorMessage = '네트워크 연결을 확인하고 다시 시도해주세요.';
+        } else if (errorMessage.contains('permission') || errorMessage.contains('unauthorized')) {
+          errorMessage = '권한이 없습니다. 다시 로그인해주세요.';
+        } else if (errorMessage.contains('storage') || errorMessage.contains('upload')) {
+          errorMessage = '이미지 업로드에 실패했습니다. 이미지 크기를 확인하고 다시 시도해주세요.';
+        }
+        
+        _showErrorMessage(errorMessage);
       }
     } finally {
       if (mounted) {
@@ -763,6 +1087,35 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         });
       }
     }
+  }
+  
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: '확인',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
   }
 }
 

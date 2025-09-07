@@ -3,12 +3,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/user_model.dart';
 import '../models/shop_model.dart';
+import '../utils/test_session.dart';
 
 class UserService {
   final SupabaseClient _client = SupabaseConfig.client;
 
   // 현재 로그인한 사용자 정보 가져오기
   Future<UserModel?> getCurrentUser() async {
+    if (TestSession.enabled && TestSession.user != null) {
+      return TestSession.user;
+    }
     try {
       final authUser = _client.auth.currentUser;
       if (authUser == null) return null;
@@ -81,7 +85,7 @@ class UserService {
         throw Exception('Failed to create auth user');
       }
 
-      // Users 테이블에 추가
+      // Users 테이블에 추가 (DB 트리거가 자동으로 샵을 생성함)
       final userResponse = await _client
           .from('users')
           .insert({
@@ -96,10 +100,47 @@ class UserService {
           .select()
           .single();
 
+      // 샵 생성 확인 (트리거가 실행되지 않은 경우 수동 생성)
+      await _ensureUserShopCreated(authResponse.user!.id, name);
+
       return UserModel.fromJson(userResponse);
     } catch (e) {
       print('Error creating user: $e');
       return null;
+    }
+  }
+
+  // 사용자 샵 생성 확인 및 생성
+  Future<void> _ensureUserShopCreated(String userId, String userName) async {
+    try {
+      // 잠시 대기 후 샵 생성 확인 (트리거 실행 시간 고려)
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final existingShop = await _client
+          .from('shops')
+          .select()
+          .eq('owner_id', userId)
+          .maybeSingle();
+
+      if (existingShop == null) {
+        // 트리거가 실행되지 않은 경우 수동으로 샵 생성
+        final shareUrl = 'shop-${userId.replaceAll('-', '').substring(0, 12)}';
+        
+        final shopResponse = await _client.from('shops').insert({
+          'owner_id': userId,
+          'name': '$userName의 샵',
+          'description': '$userName님의 개인 샵입니다.',
+          'share_url': shareUrl,
+        }).select().single();
+
+        // 사용자 테이블의 shop_id 업데이트
+        await _client
+            .from('users')
+            .update({'shop_id': shopResponse['id']})
+            .eq('id', userId);
+      }
+    } catch (e) {
+      print('Error ensuring user shop: $e');
     }
   }
 

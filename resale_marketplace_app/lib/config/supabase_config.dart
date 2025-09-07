@@ -15,6 +15,8 @@ class SupabaseConfig {
       authOptions: const FlutterAuthClientOptions(
         authFlowType: AuthFlowType.pkce,
         autoRefreshToken: true,
+        // 세션 감지 활성화
+        detectSessionInUri: true,
       ),
       realtimeClientOptions: const RealtimeClientOptions(
         logLevel: RealtimeLogLevel.info,

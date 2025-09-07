@@ -1,12 +1,81 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const Color primaryColor = Color(0xFF2196F3);
-  static const Color secondaryColor = Color(0xFFFF9800);
-  static const Color backgroundColor = Color(0xFFF5F5F5);
+  // 브랜드 컬러 팔레트
+  static const Color primaryColor = Color(0xFF6B73FF);
+  static const Color primaryLight = Color(0xFF9FA8FF);
+  static const Color primaryDark = Color(0xFF3F51B5);
+  
+  static const Color secondaryColor = Color(0xFF00BCD4);
+  static const Color secondaryLight = Color(0xFF62EFFF);
+  static const Color secondaryDark = Color(0xFF008BA3);
+  
+  static const Color accentColor = Color(0xFFFF6B6B);
+  static const Color accentLight = Color(0xFFFF9A9A);
+  static const Color accentDark = Color(0xFFE53E3E);
+  
+  // 중성 컬러
+  static const Color backgroundColor = Color(0xFFFAFAFA);
   static const Color surfaceColor = Colors.white;
-  static const Color errorColor = Color(0xFFE53E3E);
-  static const Color successColor = Color(0xFF38A169);
+  static const Color cardColor = Colors.white;
+  static const Color dividerColor = Color(0xFFE0E0E0);
+  
+  // 텍스트 컬러
+  static const Color textPrimary = Color(0xFF212121);
+  static const Color textSecondary = Color(0xFF757575);
+  static const Color textHint = Color(0xFFBDBDBD);
+  static const Color textDisabled = Color(0xFF9E9E9E);
+  
+  // 상태 컬러
+  static const Color successColor = Color(0xFF4CAF50);
+  static const Color warningColor = Color(0xFFFF9800);
+  static const Color errorColor = Color(0xFFF44336);
+  static const Color infoColor = Color(0xFF2196F3);
+  
+  // 그라데이션
+  static const LinearGradient primaryGradient = LinearGradient(
+    colors: [primaryColor, primaryLight],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static const LinearGradient cardGradient = LinearGradient(
+    colors: [Colors.white, Color(0xFFF8F9FA)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+  
+  // 그림자
+  static const List<BoxShadow> cardShadow = [
+    BoxShadow(
+      color: Color(0x0A000000),
+      blurRadius: 8,
+      offset: Offset(0, 2),
+    ),
+  ];
+  
+  static const List<BoxShadow> elevatedShadow = [
+    BoxShadow(
+      color: Color(0x14000000),
+      blurRadius: 16,
+      offset: Offset(0, 4),
+    ),
+  ];
+  
+  // 간격
+  static const double spacingXs = 4.0;
+  static const double spacingSm = 8.0;
+  static const double spacingMd = 16.0;
+  static const double spacingLg = 24.0;
+  static const double spacingXl = 32.0;
+  static const double spacingXxl = 48.0;
+  
+  // 반지름
+  static const double radiusXs = 4.0;
+  static const double radiusSm = 8.0;
+  static const double radiusMd = 12.0;
+  static const double radiusLg = 16.0;
+  static const double radiusXl = 24.0;
   
   static ThemeData get lightTheme {
     return ThemeData(
