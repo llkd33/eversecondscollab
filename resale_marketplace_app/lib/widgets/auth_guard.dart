@@ -115,34 +115,6 @@ class AuthGuard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              // Test view: local session with full access
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () async {
-                    final auth = context.read<AuthProvider>();
-                    final ok = await auth.signInWithTestAccount();
-                    if (ok) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('테스트 모드로 둘러보기 시작')),
-                      );
-                      // Stay on current screen, it will rebuild with auth
-                    } else if (auth.errorMessage != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(auth.errorMessage!)),
-                      );
-                    }
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('테스트 계정으로 보기'),
-                ),
-              ),
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () {
@@ -444,23 +416,6 @@ class AuthRequiredButton extends StatelessWidget {
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final auth = context.read<AuthProvider>();
-                final ok = await auth.signInWithTestAccount();
-                Navigator.of(context).pop();
-                if (ok) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('테스트 모드로 둘러보기 시작')),
-                  );
-                } else if (auth.errorMessage != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(auth.errorMessage!)),
-                  );
-                }
-              },
-              child: const Text('테스트 계정으로 보기'),
             ),
             ElevatedButton(
               onPressed: () {

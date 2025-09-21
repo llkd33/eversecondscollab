@@ -531,7 +531,7 @@ class _MenuSection extends StatelessWidget {
             icon: Icons.rate_review,
             title: '내 리뷰',
             onTap: () {
-              final user = context.read<AuthProvider>().user;
+              final user = context.read<AuthProvider>().currentUser;
               if (user != null) {
                 context.pushNamed(
                   'reviews',

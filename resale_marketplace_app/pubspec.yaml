@@ -37,6 +37,7 @@ dependencies:
   
   # Supabase for backend services
   supabase_flutter: ^2.8.0
+  gotrue: ^2.13.0
   
   # Kakao SDK for login
   kakao_flutter_sdk: ^1.9.6
@@ -65,6 +66,9 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.5.1
   share_plus: ^10.1.2
+  
+  # Deep linking support
+  app_links: ^6.3.2
 
 dev_dependencies:
   flutter_test:

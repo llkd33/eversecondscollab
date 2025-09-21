@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/report_model.dart';
+import '../utils/uuid.dart';
 
 class ReportService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -15,6 +16,9 @@ class ReportService {
     String priority = 'medium',
   }) async {
     try {
+      if (!UuidUtils.isValid(reporterId) || !UuidUtils.isValid(targetId)) {
+        throw Exception('신고에 필요한 식별자가 올바르지 않습니다.');
+      }
       final response = await _supabase
           .from('reports')
           .insert({
@@ -47,22 +51,11 @@ class ReportService {
     int limit = 50,
   }) async {
     try {
-      var query = _supabase
+      final response = await _supabase
           .from('reports')
           .select()
-          .order('created_at', ascending: false);
-
-      if (status != null) {
-        query = query.eq('status', status);
-      }
-      if (targetType != null) {
-        query = query.eq('target_type', targetType);
-      }
-      if (priority != null) {
-        query = query.eq('priority', priority);
-      }
-
-      final response = await query.limit(limit);
+          .order('created_at', ascending: false)
+          .limit(limit);
 
       return (response as List)
           .map((json) => ReportModel.fromJson(json))
@@ -81,6 +74,10 @@ class ReportService {
     String? reviewNote,
   }) async {
     try {
+      if (!UuidUtils.isValid(reportId)) {
+        print('updateReportStatus skipped: invalid UUID "$reportId"');
+        return false;
+      }
       await _supabase
           .from('reports')
           .update({
@@ -101,6 +98,10 @@ class ReportService {
   // 특정 신고 조회
   Future<ReportModel?> getReportById(String reportId) async {
     try {
+      if (!UuidUtils.isValid(reportId)) {
+        print('getReportById skipped: invalid UUID "$reportId"');
+        return null;
+      }
       final response = await _supabase
           .from('reports')
           .select()
@@ -117,6 +118,10 @@ class ReportService {
   // 사용자의 신고 내역 조회
   Future<List<ReportModel>> getUserReports(String userId) async {
     try {
+      if (!UuidUtils.isValid(userId)) {
+        print('getUserReports skipped: invalid UUID "$userId"');
+        return [];
+      }
       final response = await _supabase
           .from('reports')
           .select()
@@ -135,6 +140,10 @@ class ReportService {
   // 대상에 대한 신고 내역 조회
   Future<List<ReportModel>> getTargetReports(String targetId) async {
     try {
+      if (!UuidUtils.isValid(targetId)) {
+        print('getTargetReports skipped: invalid UUID "$targetId"');
+        return [];
+      }
       final response = await _supabase
           .from('reports')
           .select()
@@ -155,10 +164,10 @@ class ReportService {
     try {
       final response = await _supabase
           .from('reports')
-          .select('id', const FetchOptions(count: CountOption.exact))
+          .select()
           .eq('status', 'pending');
 
-      return response.count ?? 0;
+      return (response as List).length;
     } catch (e) {
       print('Error fetching pending reports count: $e');
       return 0;

@@ -4,6 +4,7 @@ import '../models/safe_transaction_model.dart';
 import '../models/transaction_model.dart';
 import 'chat_service.dart';
 import 'sms_service.dart';
+import '../utils/uuid.dart';
 
 class SafeTransactionService {
   final SupabaseClient _client = SupabaseConfig.client;
@@ -16,6 +17,9 @@ class SafeTransactionService {
     required int depositAmount,
   }) async {
     try {
+      if (!UuidUtils.isValid(transactionId)) {
+        throw Exception('잘못된 거래 ID입니다.');
+      }
       // 이미 안전거래가 존재하는지 확인
       final existing = await getSafeTransactionByTransactionId(transactionId);
       if (existing != null) {
@@ -67,6 +71,10 @@ class SafeTransactionService {
   // 안전거래 ID로 조회
   Future<SafeTransactionModel?> getSafeTransactionById(String safeTransactionId) async {
     try {
+      if (!UuidUtils.isValid(safeTransactionId)) {
+        print('getSafeTransactionById skipped: invalid UUID "$safeTransactionId"');
+        return null;
+      }
       final response = await _client
           .from('safe_transactions')
           .select('''
@@ -109,6 +117,10 @@ class SafeTransactionService {
   // 거래 ID로 안전거래 조회
   Future<SafeTransactionModel?> getSafeTransactionByTransactionId(String transactionId) async {
     try {
+      if (!UuidUtils.isValid(transactionId)) {
+        print('getSafeTransactionByTransactionId skipped: invalid UUID "$transactionId"');
+        return null;
+      }
       final response = await _client
           .from('safe_transactions')
           .select('''
@@ -160,6 +172,9 @@ class SafeTransactionService {
     required int depositAmount,
   }) async {
     try {
+      if (!UuidUtils.isValid(safeTransactionId)) {
+        throw Exception('잘못된 안전거래 ID입니다.');
+      }
       // 안전거래 정보 조회
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
       if (safeTransaction == null) {
@@ -195,11 +210,19 @@ class SafeTransactionService {
           })
           .eq('id', safeTransactionId);
 
-      // 채팅방에 시스템 메시지 전송
-      await _chatService.sendSystemMessage(
-        chatId: safeTransaction.transactionId, // 실제로는 chat_id를 가져와야 함
-        content: '💰 입금확인 요청이 전송되었습니다.\n관리자가 확인 후 처리해드립니다.',
-      );
+      // 채팅방에 시스템 메시지 전송 (거래의 chat_id 사용)
+      final txRow = await _client
+          .from('transactions')
+          .select('chat_id')
+          .eq('id', safeTransaction.transactionId)
+          .single();
+      final chatId = txRow['chat_id'] as String?;
+      if (chatId != null) {
+        await _chatService.sendSystemMessage(
+          chatId: chatId,
+          content: '💰 입금확인 요청이 전송되었습니다.\n관리자가 확인 후 처리해드립니다.',
+        );
+      }
 
       return true;
     } catch (e) {
@@ -214,6 +237,9 @@ class SafeTransactionService {
     String? adminNotes,
   }) async {
     try {
+      if (!UuidUtils.isValid(safeTransactionId)) {
+        throw Exception('잘못된 안전거래 ID입니다.');
+      }
       // 안전거래 정보 조회
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
       if (safeTransaction == null) {
@@ -304,6 +330,9 @@ class SafeTransactionService {
     String? courier,
   }) async {
     try {
+      if (!UuidUtils.isValid(safeTransactionId)) {
+        throw Exception('잘못된 안전거래 ID입니다.');
+      }
       // 안전거래 정보 조회
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
       if (safeTransaction == null) {
@@ -469,6 +498,9 @@ class SafeTransactionService {
     String? adminNotes,
   }) async {
     try {
+      if (!UuidUtils.isValid(safeTransactionId)) {
+        throw Exception('잘못된 안전거래 ID입니다.');
+      }
       // 안전거래 정보 조회
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
       if (safeTransaction == null) {

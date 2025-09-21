@@ -4,51 +4,49 @@ import 'package:go_router/go_router.dart';
 import '../../services/transaction_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/transaction_model.dart';
-import '../../utils/app_router.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/safe_network_image.dart';
 
 class TransactionDetailScreen extends StatefulWidget {
   final String transactionId;
 
-  const TransactionDetailScreen({
-    super.key,
-    required this.transactionId,
-  });
+  const TransactionDetailScreen({super.key, required this.transactionId});
 
   @override
-  State<TransactionDetailScreen> createState() => _TransactionDetailScreenState();
+  State<TransactionDetailScreen> createState() =>
+      _TransactionDetailScreenState();
 }
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   final TransactionService _transactionService = TransactionService();
   final AuthService _authService = AuthService();
-  
+
   TransactionModel? _transaction;
   bool _isLoading = true;
   String? _currentUserId;
-  
+
   // 사용자 역할
   bool get isBuyer => _transaction?.buyerId == _currentUserId;
   bool get isSeller => _transaction?.sellerId == _currentUserId;
   bool get isReseller => _transaction?.resellerId == _currentUserId;
-  
+
   @override
   void initState() {
     super.initState();
     _loadTransaction();
   }
-  
+
   // 거래 정보 로드
   Future<void> _loadTransaction() async {
     try {
       // 현재 사용자 ID 가져오기
       final user = await _authService.getCurrentUser();
       _currentUserId = user?.id;
-      
+
       final transaction = await _transactionService.getTransactionById(
         widget.transactionId,
       );
-      
+
       if (mounted) {
         setState(() {
           _transaction = transaction;
@@ -64,7 +62,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
     }
   }
-  
+
   // 결제 확인 (구매자)
   Future<void> _confirmPayment() async {
     final result = await showDialog<bool>(
@@ -84,13 +82,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ],
       ),
     );
-    
+
     if (result == true) {
       final success = await _transactionService.confirmPayment(
         transactionId: widget.transactionId,
         paymentMethod: '카드결제', // 실제로는 선택하도록 구현
       );
-      
+
       if (success) {
         _showMessage('결제가 확인되었습니다');
         _loadTransaction();
@@ -99,12 +97,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
     }
   }
-  
+
   // 배송 시작 (판매자)
   Future<void> _startShipping() async {
     final trackingNumberController = TextEditingController();
     final courierController = TextEditingController();
-    
+
     final result = await showDialog<Map<String, String>?>(
       context: context,
       builder: (context) => AlertDialog(
@@ -148,14 +146,14 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ],
       ),
     );
-    
+
     if (result != null) {
       final success = await _transactionService.startShipping(
         transactionId: widget.transactionId,
         trackingNumber: result['trackingNumber']!,
         courier: result['courier'],
       );
-      
+
       if (success) {
         _showMessage('배송이 시작되었습니다');
         _loadTransaction();
@@ -164,7 +162,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
     }
   }
-  
+
   // 수령 확인 (구매자)
   Future<void> _confirmReceipt() async {
     final result = await showDialog<bool>(
@@ -184,12 +182,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ],
       ),
     );
-    
+
     if (result == true) {
       final success = await _transactionService.confirmReceipt(
         transactionId: widget.transactionId,
       );
-      
+
       if (success) {
         _showMessage('거래가 완료되었습니다');
         _loadTransaction();
@@ -198,11 +196,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
     }
   }
-  
+
   // 거래 취소
   Future<void> _cancelTransaction() async {
     final reasonController = TextEditingController();
-    
+
     final reason = await showDialog<String?>(
       context: context,
       builder: (context) => AlertDialog(
@@ -229,22 +227,20 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, reasonController.text),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('거래 취소'),
           ),
         ],
       ),
     );
-    
+
     if (reason != null) {
       final success = await _transactionService.updateTransactionStatus(
         transactionId: widget.transactionId,
         newStatus: TransactionStatus.canceled,
         reason: reason,
       );
-      
+
       if (success) {
         _showMessage('거래가 취소되었습니다');
         _loadTransaction();
@@ -253,45 +249,87 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       }
     }
   }
-  
+
   // 메시지 표시
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
-  
+
   // 에러 메시지 표시
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
-  
+
   // 리뷰 목록으로 이동
   void _navigateToReviewList() {
     context.push('/transaction/${widget.transactionId}/reviews');
   }
-  
+
+  void _navigateToChatRoom() {
+    final chatId = _transaction?.chatId;
+    if (chatId == null || chatId.isEmpty) {
+      _showError('채팅 정보를 불러올 수 없습니다');
+      return;
+    }
+
+    final participantNames = <String>[
+      if (_transaction?.buyerName != null &&
+          (_currentUserId == null || _transaction!.buyerId != _currentUserId))
+        _transaction!.buyerName!,
+      if (_transaction?.sellerName != null &&
+          (_currentUserId == null || _transaction!.sellerId != _currentUserId))
+        _transaction!.sellerName!,
+      if (_transaction?.resellerId != null &&
+          _transaction?.resellerName != null &&
+          (_currentUserId == null ||
+              _transaction!.resellerId != _currentUserId))
+        _transaction!.resellerName!,
+    ];
+
+    final uniqueNames = <String>[];
+    for (final name in participantNames) {
+      if (name.trim().isEmpty) continue;
+      if (!uniqueNames.contains(name)) {
+        uniqueNames.add(name);
+      }
+    }
+
+    final userName = uniqueNames.isNotEmpty
+        ? uniqueNames.join(', ')
+        : (_transaction?.sellerName ??
+              _transaction?.buyerName ??
+              _transaction?.resellerName ??
+              '거래 채팅');
+
+    context.push(
+      '/chat_room',
+      extra: {
+        'chatRoomId': chatId,
+        'userName': userName,
+        'productTitle': _transaction?.productTitle ?? '',
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    
+
     if (_transaction == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(
-          child: Text('거래 정보를 불러올 수 없습니다'),
-        ),
+        body: const Center(child: Text('거래 정보를 불러올 수 없습니다')),
       );
     }
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('거래 상세'),
@@ -300,13 +338,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           if (_transaction!.chatId != null)
             IconButton(
               icon: const Icon(Icons.chat_bubble_outline),
-              onPressed: () {
-                Navigator.pushNamed(
-                  context,
-                  AppRouter.chatRoom,
-                  arguments: _transaction!.chatId,
-                );
-              },
+              onPressed: _navigateToChatRoom,
             ),
         ],
       ),
@@ -331,11 +363,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildStatusHeader(ThemeData theme) {
     Color statusColor;
     IconData statusIcon;
-    
+
     switch (_transaction!.status) {
       case TransactionStatus.ongoing:
         statusColor = Colors.orange;
@@ -353,17 +385,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         statusColor = theme.colorScheme.onSurfaceVariant;
         statusIcon = Icons.help_outline;
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       color: statusColor.withOpacity(0.1),
       child: Column(
         children: [
-          Icon(
-            statusIcon,
-            size: 48,
-            color: statusColor,
-          ),
+          Icon(statusIcon, size: 48, color: statusColor),
           const SizedBox(height: 12),
           Text(
             _transaction!.status,
@@ -398,7 +426,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildProductInfo(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -418,24 +446,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               child: Row(
                 children: [
                   // 상품 이미지
-                  ClipRRect(
+                  SafeNetworkImage(
+                    imageUrl: _transaction!.productImage,
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.cover,
                     borderRadius: BorderRadius.circular(8),
-                    child: _transaction!.productImage != null
-                        ? Image.network(
-                            _transaction!.productImage!,
-                            width: 80,
-                            height: 80,
-                            fit: BoxFit.cover,
-                          )
-                        : Container(
-                            width: 80,
-                            height: 80,
-                            color: theme.colorScheme.surfaceVariant,
-                            child: Icon(
-                              Icons.image,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
                   ),
                   const SizedBox(width: 16),
                   // 상품 정보
@@ -468,7 +484,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildTransactionInfo(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -493,11 +509,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                     _transaction!.id.substring(0, 8).toUpperCase(),
                   ),
                   const Divider(height: 24),
-                  _buildInfoRow(
-                    theme,
-                    '거래 방식',
-                    _transaction!.transactionType,
-                  ),
+                  _buildInfoRow(theme, '거래 방식', _transaction!.transactionType),
                   const Divider(height: 24),
                   _buildInfoRow(
                     theme,
@@ -520,7 +532,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildParticipantInfo(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -582,10 +594,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '대신판매 수수료',
-                        style: theme.textTheme.bodyMedium,
-                      ),
+                      Text('대신판매 수수료', style: theme.textTheme.bodyMedium),
                       Text(
                         _transaction!.formattedResaleFee,
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -598,10 +607,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '판매자 수령액',
-                        style: theme.textTheme.bodyMedium,
-                      ),
+                      Text('판매자 수령액', style: theme.textTheme.bodyMedium),
                       Text(
                         _formatPrice(_transaction!.sellerAmount),
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -619,7 +625,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildSafeTransactionProcess(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -646,29 +652,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                     true, // TODO: 실제 상태에 따라 변경
                   ),
                   _buildProcessConnector(theme, true),
-                  _buildProcessStep(
-                    theme,
-                    '배송 시작',
-                    '판매자가 상품을 발송합니다',
-                    2,
-                    false,
-                  ),
+                  _buildProcessStep(theme, '배송 시작', '판매자가 상품을 발송합니다', 2, false),
                   _buildProcessConnector(theme, false),
-                  _buildProcessStep(
-                    theme,
-                    '수령 확인',
-                    '구매자가 상품을 확인합니다',
-                    3,
-                    false,
-                  ),
+                  _buildProcessStep(theme, '수령 확인', '구매자가 상품을 확인합니다', 3, false),
                   _buildProcessConnector(theme, false),
-                  _buildProcessStep(
-                    theme,
-                    '거래 완료',
-                    '정산이 완료됩니다',
-                    4,
-                    false,
-                  ),
+                  _buildProcessStep(theme, '거래 완료', '정산이 완료됩니다', 4, false),
                 ],
               ),
             ),
@@ -677,7 +665,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildProcessStep(
     ThemeData theme,
     String title,
@@ -698,11 +686,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           ),
           child: Center(
             child: isCompleted
-                ? const Icon(
-                    Icons.check,
-                    color: Colors.white,
-                    size: 16,
-                  )
+                ? const Icon(Icons.check, color: Colors.white, size: 16)
                 : Text(
                     step.toString(),
                     style: TextStyle(
@@ -738,7 +722,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ],
     );
   }
-  
+
   Widget _buildProcessConnector(ThemeData theme, bool isCompleted) {
     return Container(
       margin: const EdgeInsets.only(left: 15),
@@ -749,7 +733,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           : theme.colorScheme.surfaceVariant,
     );
   }
-  
+
   Widget _buildActionButtons(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -758,7 +742,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           // 거래 완료 후 리뷰 작성 버튼
           if (_transaction!.status == TransactionStatus.completed)
             _buildReviewSection(theme),
-          
+
           // 진행 중인 거래 액션 버튼
           if (_transaction!.status == TransactionStatus.ongoing)
             _buildOngoingTransactionActions(theme),
@@ -766,7 +750,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
     );
   }
-  
+
   Widget _buildReviewSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -794,9 +778,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ],
     );
   }
-  
+
   Widget _buildOngoingTransactionActions(ThemeData theme) {
-    
     return Column(
       children: [
         // 안전거래 액션 버튼
@@ -862,7 +845,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ],
     );
   }
-  
+
   Widget _buildInfoRow(ThemeData theme, String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -882,7 +865,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ],
     );
   }
-  
+
   Widget _buildParticipantRow(
     ThemeData theme,
     String role,
@@ -909,10 +892,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             if (isMe) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary,
                   borderRadius: BorderRadius.circular(4),
@@ -930,16 +910,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ],
     );
   }
-  
+
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}.${dateTime.month.toString().padLeft(2, '0')}.${dateTime.day.toString().padLeft(2, '0')} '
-           '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
-  
+
   String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}원';
+    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   }
 }

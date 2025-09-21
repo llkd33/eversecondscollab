@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
               hintText: '상품명, 브랜드, 판매자명으로 검색',
               readOnly: true,
               onTap: () {
-                Navigator.pushNamed(context, '/search');
+                context.push('/search');
               },
             ),
             
@@ -470,4 +470,3 @@ class _CategoryChip extends StatelessWidget {
     );
   }
 }
-

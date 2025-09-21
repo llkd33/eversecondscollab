@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../config/supabase_config.dart';
 
 // SMS 에러 타입
@@ -19,7 +21,7 @@ class SMSException implements Exception {
   final bool isRetryable;
 
   SMSException(this.message, this.errorType, {bool? isRetryable})
-      : isRetryable = isRetryable ?? _getDefaultRetryable(errorType);
+    : isRetryable = isRetryable ?? _getDefaultRetryable(errorType);
 
   static bool _getDefaultRetryable(SMSErrorType errorType) {
     switch (errorType) {
@@ -41,10 +43,10 @@ class SMSException implements Exception {
 
 class SMSService {
   final SupabaseClient _client = SupabaseConfig.client;
-  
+
   // 관리자 전화번호 (실제 환경에서는 환경변수로 관리)
   static const String adminPhoneNumber = '010-1234-5678';
-  
+
   // SMS 발송 제한 (동일 번호로 1분에 1회)
   static final Map<String, DateTime> _lastSentTime = {};
   static const Duration _rateLimitDuration = Duration(minutes: 1);
@@ -52,12 +54,18 @@ class SMSService {
   // SMS 템플릿 관리
   static const Map<String, String> _smsTemplates = {
     'verification_code': '[에버세컨즈] 인증번호: {code}\n타인에게 절대 알려주지 마세요.\n유효시간: 5분',
-    'deposit_request_admin': '💰 입금확인 요청\n구매자: {buyer_name} ({buyer_phone})\n상품: {product_title}\n금액: {amount}\n어드민에서 확인 후 처리해주세요.',
-    'deposit_confirmed_seller': '✅ 입금이 확인되었습니다.\n상품: {product_title}\n금액: {amount}\n상품을 발송해주세요.',
-    'deposit_confirmed_reseller': '✅ 입금이 확인되었습니다.\n상품: {product_title}\n대신판매 수수료 정산이 예정되어 있습니다.',
-    'shipping_info_buyer': '📦 상품이 발송되었습니다.\n상품: {product_title}\n{tracking_info}상품 수령 후 완료 버튼을 눌러주세요.',
-    'transaction_completed_admin': '✅ 거래가 정상 완료되었습니다.\n구매자: {buyer_name}\n판매자: {seller_name}\n상품: {product_title}\n금액: {amount}\n정산 처리를 진행해주세요.',
-    'commission_settlement': '💰 대신판매 수수료가 정산되었습니다.\n상품: {product_title}\n수수료: {commission}\n감사합니다.',
+    'deposit_request_admin':
+        '💰 입금확인 요청\n구매자: {buyer_name} ({buyer_phone})\n상품: {product_title}\n금액: {amount}\n어드민에서 확인 후 처리해주세요.',
+    'deposit_confirmed_seller':
+        '✅ 입금이 확인되었습니다.\n상품: {product_title}\n금액: {amount}\n상품을 발송해주세요.',
+    'deposit_confirmed_reseller':
+        '✅ 입금이 확인되었습니다.\n상품: {product_title}\n대신판매 수수료 정산이 예정되어 있습니다.',
+    'shipping_info_buyer':
+        '📦 상품이 발송되었습니다.\n상품: {product_title}\n{tracking_info}상품 수령 후 완료 버튼을 눌러주세요.',
+    'transaction_completed_admin':
+        '✅ 거래가 정상 완료되었습니다.\n구매자: {buyer_name}\n판매자: {seller_name}\n상품: {product_title}\n금액: {amount}\n정산 처리를 진행해주세요.',
+    'commission_settlement':
+        '💰 대신판매 수수료가 정산되었습니다.\n상품: {product_title}\n수수료: {commission}\n감사합니다.',
   };
 
   // SMS 템플릿 포맷팅
@@ -75,6 +83,14 @@ class SMSService {
     return formattedMessage;
   }
 
+  @visibleForTesting
+  String debugFormatTemplate(
+    String templateKey,
+    Map<String, String> variables,
+  ) {
+    return _formatSMSTemplate(templateKey, variables);
+  }
+
   // SMS 발송 (개선된 버전)
   Future<bool> sendSMS({
     required String phoneNumber,
@@ -89,7 +105,10 @@ class SMSService {
       try {
         // 전화번호 유효성 검사
         if (!_isValidPhoneNumber(phoneNumber)) {
-          throw SMSException('유효하지 않은 전화번호입니다: $phoneNumber', SMSErrorType.invalidPhoneNumber);
+          throw SMSException(
+            '유효하지 않은 전화번호입니다: $phoneNumber',
+            SMSErrorType.invalidPhoneNumber,
+          );
         }
 
         // Rate limiting 검사 (인증번호 타입만)
@@ -98,8 +117,12 @@ class SMSService {
           if (lastSent != null) {
             final timeDiff = DateTime.now().difference(lastSent);
             if (timeDiff < _rateLimitDuration) {
-              final remainingSeconds = _rateLimitDuration.inSeconds - timeDiff.inSeconds;
-              throw SMSException('SMS 발송 제한: ${remainingSeconds}초 후 다시 시도해주세요.', SMSErrorType.rateLimited);
+              final remainingSeconds =
+                  _rateLimitDuration.inSeconds - timeDiff.inSeconds;
+              throw SMSException(
+                'SMS 발송 제한: ${remainingSeconds}초 후 다시 시도해주세요.',
+                SMSErrorType.rateLimited,
+              );
             }
           }
           _lastSentTime[phoneNumber] = DateTime.now();
@@ -109,7 +132,10 @@ class SMSService {
         if (message.length > 45) {
           // LMS로 자동 전환 (장문 메시지)
           if (message.length > 2000) {
-            throw SMSException('메시지가 너무 깁니다. 2000자 이내로 작성해주세요.', SMSErrorType.messageTooLong);
+            throw SMSException(
+              '메시지가 너무 깁니다. 2000자 이내로 작성해주세요.',
+              SMSErrorType.messageTooLong,
+            );
           }
         }
 
@@ -130,21 +156,21 @@ class SMSService {
       } catch (e) {
         lastException = e is Exception ? e : Exception(e.toString());
         retryCount++;
-        
+
         print('SMS 발송 실패 (시도 $retryCount/$maxRetries): $e');
-        
+
         // 재시도 불가능한 에러인 경우 즉시 실패 처리
         if (e is SMSException && !e.isRetryable) {
           break;
         }
-        
+
         // 마지막 시도가 아닌 경우 잠시 대기 후 재시도
         if (retryCount < maxRetries) {
           await Future.delayed(Duration(seconds: retryCount * 2)); // 지수 백오프
         }
       }
     }
-    
+
     // 실패 로그 저장
     await _saveSMSLog(
       phoneNumber: phoneNumber,
@@ -154,7 +180,7 @@ class SMSService {
       errorMessage: lastException?.toString(),
       retryCount: retryCount,
     );
-    
+
     throw lastException ?? Exception('SMS 발송에 실패했습니다.');
   }
 
@@ -184,7 +210,11 @@ class SMSService {
   }
 
   // SMS 발송 시뮬레이션 (실제 API 연동 전까지 사용)
-  Future<void> _simulateSMSSending(String phoneNumber, String message, String type) async {
+  Future<void> _simulateSMSSending(
+    String phoneNumber,
+    String message,
+    String type,
+  ) async {
     // 개발 환경에서는 콘솔에 출력
     print('=== SMS 발송 시뮬레이션 ===');
     print('수신번호: $phoneNumber');
@@ -195,7 +225,9 @@ class SMSService {
     print('========================');
 
     // 네트워크 지연 시뮬레이션 (실제 SMS API 응답 시간 모방)
-    final delay = Duration(milliseconds: 300 + (DateTime.now().millisecond % 700));
+    final delay = Duration(
+      milliseconds: 300 + (DateTime.now().millisecond % 700),
+    );
     await Future.delayed(delay);
 
     // 실패 시뮬레이션 (5% 확률로 실패)
@@ -219,11 +251,7 @@ class SMSService {
     required String message,
     String type = 'admin_notification',
   }) async {
-    return sendSMS(
-      phoneNumber: adminPhoneNumber,
-      message: message,
-      type: type,
-    );
+    return sendSMS(phoneNumber: adminPhoneNumber, message: message, type: type);
   }
 
   // 인증번호 SMS 발송 (개선된 버전)
@@ -234,19 +262,23 @@ class SMSService {
     try {
       // 전화번호 유효성 검사
       if (!_isValidPhoneNumber(phoneNumber)) {
-        throw SMSException('유효하지 않은 전화번호입니다: $phoneNumber', SMSErrorType.invalidPhoneNumber);
+        throw SMSException(
+          '유효하지 않은 전화번호입니다: $phoneNumber',
+          SMSErrorType.invalidPhoneNumber,
+        );
       }
 
       // 인증번호 유효성 검사
       if (code.length != 6 || !RegExp(r'^\d{6}$').hasMatch(code)) {
-        throw SMSException('유효하지 않은 인증번호 형식입니다: $code', SMSErrorType.invalidPhoneNumber);
+        throw SMSException(
+          '유효하지 않은 인증번호 형식입니다: $code',
+          SMSErrorType.invalidPhoneNumber,
+        );
       }
 
       // 템플릿을 사용하여 메시지 생성
-      final message = _formatSMSTemplate('verification_code', {
-        'code': code,
-      });
-      
+      final message = _formatSMSTemplate('verification_code', {'code': code});
+
       return await sendSMS(
         phoneNumber: phoneNumber,
         message: message,
@@ -265,6 +297,11 @@ class SMSService {
     return phoneRegExp.hasMatch(phoneNumber);
   }
 
+  @visibleForTesting
+  bool debugIsValidPhoneNumber(String phoneNumber) {
+    return _isValidPhoneNumber(phoneNumber);
+  }
+
   // 입금확인 요청 SMS (관리자용)
   Future<bool> sendDepositRequestToAdmin({
     required String buyerName,
@@ -279,11 +316,8 @@ class SMSService {
         'product_title': productTitle,
         'amount': _formatPrice(amount),
       });
-      
-      return await sendSMSToAdmin(
-        message: message,
-        type: '입금확인요청',
-      );
+
+      return await sendSMSToAdmin(message: message, type: '입금확인요청');
     } catch (e) {
       print('Error sending deposit request to admin: $e');
       rethrow;
@@ -301,7 +335,7 @@ class SMSService {
         'product_title': productTitle,
         'amount': _formatPrice(amount),
       });
-      
+
       return await sendSMS(
         phoneNumber: sellerPhone,
         message: message,
@@ -322,7 +356,7 @@ class SMSService {
       final message = _formatSMSTemplate('deposit_confirmed_reseller', {
         'product_title': productTitle,
       });
-      
+
       return await sendSMS(
         phoneNumber: resellerPhone,
         message: message,
@@ -354,7 +388,7 @@ class SMSService {
         'product_title': productTitle,
         'tracking_info': trackingInfo,
       });
-      
+
       return await sendSMS(
         phoneNumber: buyerPhone,
         message: message,
@@ -380,11 +414,8 @@ class SMSService {
         'product_title': productTitle,
         'amount': _formatPrice(amount),
       });
-      
-      return await sendSMSToAdmin(
-        message: message,
-        type: '거래완료',
-      );
+
+      return await sendSMSToAdmin(message: message, type: '거래완료');
     } catch (e) {
       print('Error sending transaction completed to admin: $e');
       rethrow;
@@ -402,7 +433,7 @@ class SMSService {
         'product_title': productTitle,
         'commission': _formatPrice(commission),
       });
-      
+
       return await sendSMS(
         phoneNumber: resellerPhone,
         message: message,
@@ -424,9 +455,7 @@ class SMSService {
     int offset = 0,
   }) async {
     try {
-      var query = _client
-          .from('sms_logs')
-          .select('*');
+      var query = _client.from('sms_logs').select('*');
 
       if (phoneNumber != null) {
         query = query.eq('phone_number', phoneNumber);
@@ -458,9 +487,7 @@ class SMSService {
     DateTime? endDate,
   }) async {
     try {
-      var query = _client
-          .from('sms_logs')
-          .select('message_type, is_sent');
+      var query = _client.from('sms_logs').select('message_type, is_sent');
 
       if (startDate != null) {
         query = query.gte('sent_at', startDate.toIso8601String());
@@ -470,7 +497,7 @@ class SMSService {
       }
 
       final response = await query;
-      
+
       final stats = <String, dynamic>{
         'total_count': 0,
         'success_count': 0,
@@ -480,7 +507,7 @@ class SMSService {
 
       for (final log in response) {
         stats['total_count']++;
-        
+
         if (log['is_sent'] == true) {
           stats['success_count']++;
         } else {
@@ -502,7 +529,7 @@ class SMSService {
   bool canSendSMS(String phoneNumber) {
     final lastSent = _lastSentTime[phoneNumber];
     if (lastSent == null) return true;
-    
+
     final timeDiff = DateTime.now().difference(lastSent);
     return timeDiff >= _rateLimitDuration;
   }
@@ -511,7 +538,7 @@ class SMSService {
   int getNextSendableTime(String phoneNumber) {
     final lastSent = _lastSentTime[phoneNumber];
     if (lastSent == null) return 0;
-    
+
     final timeDiff = DateTime.now().difference(lastSent);
     final remaining = _rateLimitDuration.inSeconds - timeDiff.inSeconds;
     return remaining > 0 ? remaining : 0;
@@ -521,7 +548,11 @@ class SMSService {
   Future<Map<String, int>> getDailySMSStats({DateTime? date}) async {
     try {
       final targetDate = date ?? DateTime.now();
-      final startOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day);
+      final startOfDay = DateTime(
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+      );
       final endOfDay = startOfDay.add(const Duration(days: 1));
 
       final response = await _client
@@ -540,7 +571,7 @@ class SMSService {
 
       for (final log in response) {
         stats['total'] = (stats['total'] ?? 0) + 1;
-        
+
         if (log['is_sent'] == true) {
           stats['success'] = (stats['success'] ?? 0) + 1;
         } else {
@@ -600,7 +631,7 @@ class SMSService {
           .limit(batchSize);
 
       final smsQueue = response as List;
-      
+
       for (final smsItem in smsQueue) {
         try {
           // SMS 발송 시도
@@ -618,7 +649,6 @@ class SMSService {
                 'sent_at': DateTime.now().toIso8601String(),
               })
               .eq('id', smsItem['id']);
-
         } catch (e) {
           // 개별 SMS 실패 시 큐 상태 업데이트
           await _client
@@ -644,12 +674,15 @@ class SMSService {
           .select()
           .eq('is_sent', false)
           .lt('retry_count', maxRetries)
-          .gte('sent_at', DateTime.now().subtract(Duration(hours: 24)).toIso8601String())
+          .gte(
+            'sent_at',
+            DateTime.now().subtract(Duration(hours: 24)).toIso8601String(),
+          )
           .order('sent_at', ascending: false)
           .limit(50);
 
       final failedSMS = response as List;
-      
+
       for (final sms in failedSMS) {
         try {
           final success = await sendSMS(
@@ -698,12 +731,12 @@ class SMSService {
   bool canSendSMSNow({DateTime? targetTime}) {
     final now = targetTime ?? DateTime.now();
     final hour = now.hour;
-    
+
     // 야간 시간대 (21시 ~ 8시) 발송 제한
     if (hour >= 21 || hour < 8) {
       return false;
     }
-    
+
     return true;
   }
 
@@ -712,7 +745,7 @@ class SMSService {
     final length = message.length;
     int smsCount;
     String messageType;
-    
+
     if (length <= 45) {
       smsCount = 1;
       messageType = 'SMS';
@@ -723,11 +756,11 @@ class SMSService {
       smsCount = (length / 45).ceil();
       messageType = 'MMS';
     }
-    
+
     // 예상 비용 (실제 요금제에 따라 조정 필요)
     final costPerSMS = messageType == 'SMS' ? 20 : 50; // 원
     final totalCost = smsCount * costPerSMS;
-    
+
     return {
       'message_type': messageType,
       'sms_count': smsCount,
@@ -739,9 +772,6 @@ class SMSService {
 
   // 가격 포맷팅 헬퍼
   String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}원';
+    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   }
 }

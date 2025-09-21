@@ -1,10 +1,16 @@
+import 'dart:math';
+
+import 'package:postgrest/postgrest.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../config/supabase_config.dart';
 import '../models/shop_model.dart';
 import '../models/product_model.dart';
+import '../utils/uuid.dart';
 
 class ShopService {
   final SupabaseClient _client = SupabaseConfig.client;
+  final Random _random = Random();
 
   // 샵 생성 (회원가입 시 자동 생성) - DB 트리거에 의해 자동 생성되므로 수동 생성은 불필요
   Future<ShopModel?> createShop({
@@ -13,29 +19,94 @@ class ShopService {
     String? description,
   }) async {
     try {
+      if (!UuidUtils.isValid(ownerId)) {
+        throw Exception('잘못된 사용자 ID입니다. 다시 로그인 후 시도해주세요.');
+      }
       // 이미 존재하는 샵이 있는지 확인
       final existingShop = await getShopByOwnerId(ownerId);
       if (existingShop != null) {
+        final userRecord = await _client
+            .from('users')
+            .select('shop_id')
+            .eq('id', ownerId)
+            .maybeSingle();
+
+        if (userRecord != null && userRecord['shop_id'] == null) {
+          await _client
+              .from('users')
+              .update({'shop_id': existingShop.id})
+              .eq('id', ownerId);
+        }
+
         return existingShop;
       }
 
-      // 샵 URL 생성 (사용자 ID 기반)
-      final shareUrl = 'shop-${ownerId.replaceAll('-', '').substring(0, 12)}';
-      
-      final response = await _client.from('shops').insert({
-        'owner_id': ownerId,
-        'name': name,
-        'description': description ?? '$name님의 개인 샵입니다.',
-        'share_url': shareUrl,
-      }).select().single();
+      final baseShareUrl = _buildBaseShareUrl(ownerId);
+      var candidate = baseShareUrl;
+      var attempt = 0;
+      PostgrestException? lastDuplicateError;
 
-      // 사용자 테이블의 shop_id 업데이트
-      await _client
-          .from('users')
-          .update({'shop_id': response['id']})
-          .eq('id', ownerId);
+      while (attempt < 6) {
+        try {
+          final response = await _client
+              .from('shops')
+              .insert({
+                'owner_id': ownerId,
+                'name': name,
+                'description': description ?? '$name님의 개인 샵입니다.',
+                'share_url': candidate,
+              })
+              .select()
+              .single();
 
-      return ShopModel.fromJson(response);
+          await _client
+              .from('users')
+              .update({'shop_id': response['id']})
+              .eq('id', ownerId);
+
+          return ShopModel.fromJson(response);
+        } on PostgrestException catch (error) {
+          final isShareUrlConflict = (error.message ?? '').contains(
+            'shops_share_url_key',
+          );
+
+          if (!isShareUrlConflict) {
+            rethrow;
+          }
+
+          lastDuplicateError = error;
+          attempt += 1;
+          candidate = _buildShareUrlWithSuffix(baseShareUrl);
+          await Future.delayed(Duration(milliseconds: 30 * attempt));
+        }
+      }
+
+      final fallbackShareUrl = _buildRandomShareUrl();
+      try {
+        final response = await _client
+            .from('shops')
+            .insert({
+              'owner_id': ownerId,
+              'name': name,
+              'description': description ?? '$name님의 개인 샵입니다.',
+              'share_url': fallbackShareUrl,
+            })
+            .select()
+            .single();
+
+        await _client
+            .from('users')
+            .update({'shop_id': response['id']})
+            .eq('id', ownerId);
+
+        return ShopModel.fromJson(response);
+      } on PostgrestException catch (error) {
+        if ((error.message ?? '').contains('shops_share_url_key') &&
+            lastDuplicateError != null) {
+          throw lastDuplicateError;
+        }
+        rethrow;
+      }
     } catch (e) {
       print('Error creating shop: $e');
       return null;
@@ -66,11 +137,19 @@ class ShopService {
   // 샵 ID로 조회
   Future<ShopModel?> getShopById(String shopId) async {
     try {
+      if (!UuidUtils.isValid(shopId)) {
+        print('getShopById skipped: invalid UUID "$shopId"');
+        return null;
+      }
       final response = await _client
           .from('shops')
           .select('*, users!owner_id(name, profile_image)')
           .eq('id', shopId)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
 
       return ShopModel.fromJson(response);
     } catch (e) {
@@ -82,11 +161,19 @@ class ShopService {
   // 사용자 ID로 샵 조회
   Future<ShopModel?> getShopByOwnerId(String ownerId) async {
     try {
+      if (!UuidUtils.isValid(ownerId)) {
+        print('getShopByOwnerId skipped: invalid UUID "$ownerId"');
+        return null;
+      }
       final response = await _client
           .from('shops')
           .select('*, users!owner_id(name, profile_image)')
           .eq('owner_id', ownerId)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
 
       return ShopModel.fromJson(response);
     } catch (e) {
@@ -102,7 +189,11 @@ class ShopService {
           .from('shops')
           .select('*, users!owner_id(name, profile_image)')
           .eq('share_url', shareUrl)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
 
       return ShopModel.fromJson(response);
     } catch (e) {
@@ -118,6 +209,10 @@ class ShopService {
     String? description,
   }) async {
     try {
+      if (!UuidUtils.isValid(shopId)) {
+        print('updateShop skipped: invalid UUID "$shopId"');
+        return false;
+      }
       final updates = <String, dynamic>{};
       if (name != null) {
         if (!ShopModel.isValidShopName(name)) {
@@ -129,10 +224,7 @@ class ShopService {
 
       if (updates.isEmpty) return true;
 
-      await _client
-          .from('shops')
-          .update(updates)
-          .eq('id', shopId);
+      await _client.from('shops').update(updates).eq('id', shopId);
 
       return true;
     } catch (e) {
@@ -156,7 +248,7 @@ class ShopService {
 
       return (response as List).map((item) {
         final product = ProductModel.fromJson(item);
-        
+
         // 판매자 정보 추가
         if (item['users'] != null) {
           return product.copyWith(
@@ -164,7 +256,7 @@ class ShopService {
             sellerProfileImage: item['users']['profile_image'],
           );
         }
-        
+
         return product;
       }).toList();
     } catch (e) {
@@ -191,7 +283,7 @@ class ShopService {
       return (response as List).map((item) {
         final productData = item['products'];
         final product = ProductModel.fromJson(productData);
-        
+
         // 판매자 정보 추가
         if (productData['users'] != null) {
           return product.copyWith(
@@ -199,7 +291,7 @@ class ShopService {
             sellerProfileImage: productData['users']['profile_image'],
           );
         }
-        
+
         return product;
       }).toList();
     } catch (e) {
@@ -215,6 +307,10 @@ class ShopService {
     required double commissionPercentage,
   }) async {
     try {
+      if (!UuidUtils.isValid(shopId) || !UuidUtils.isValid(productId)) {
+        print('addResaleProduct skipped: invalid UUIDs');
+        return false;
+      }
       // 상품 정보 확인
       final productResponse = await _client
           .from('products')
@@ -250,6 +346,10 @@ class ShopService {
     required String productId,
   }) async {
     try {
+      if (!UuidUtils.isValid(shopId) || !UuidUtils.isValid(productId)) {
+        print('removeResaleProduct skipped: invalid UUIDs');
+        return false;
+      }
       await _client
           .from('shop_products')
           .delete()
@@ -267,6 +367,10 @@ class ShopService {
   // 샵 통계 조회
   Future<Map<String, dynamic>> getShopStats(String shopId) async {
     try {
+      if (!UuidUtils.isValid(shopId)) {
+        print('getShopStats skipped: invalid UUID "$shopId"');
+        return {};
+      }
       final shop = await getShopById(shopId);
       if (shop == null) return {};
 
@@ -296,7 +400,8 @@ class ShopService {
       return {
         'own_product_count': ownProductCount.count ?? 0,
         'resale_product_count': resaleProductCount.count ?? 0,
-        'total_product_count': (ownProductCount.count ?? 0) + (resaleProductCount.count ?? 0),
+        'total_product_count':
+            (ownProductCount.count ?? 0) + (resaleProductCount.count ?? 0),
         'transaction_count': transactionCount.count ?? 0,
       };
     } catch (e) {
@@ -350,22 +455,45 @@ class ShopService {
   // 샵 삭제 (실제로는 비활성화)
   Future<bool> deleteShop(String shopId) async {
     try {
+      if (!UuidUtils.isValid(shopId)) {
+        print('deleteShop skipped: invalid UUID "$shopId"');
+        return false;
+      }
       // 대신팔기 관계 모두 삭제
-      await _client
-          .from('shop_resale_products')
-          .delete()
-          .eq('shop_id', shopId);
+      await _client.from('shop_resale_products').delete().eq('shop_id', shopId);
 
       // 샵 삭제
-      await _client
-          .from('shops')
-          .delete()
-          .eq('id', shopId);
+      await _client.from('shops').delete().eq('id', shopId);
 
       return true;
     } catch (e) {
       print('Error deleting shop: $e');
       return false;
     }
+  }
+
+  String _buildBaseShareUrl(String ownerId) {
+    final sanitized = ownerId.replaceAll('-', '');
+    final truncated = sanitized.length >= 12
+        ? sanitized.substring(0, 12)
+        : sanitized.padRight(12, '0');
+    return 'shop-$truncated';
+  }
+
+  String _buildShareUrlWithSuffix(String baseShareUrl) {
+    return '$baseShareUrl-${_randomToken(6)}';
+  }
+
+  String _buildRandomShareUrl() {
+    return 'shop-${_randomToken(12)}';
+  }
+
+  String _randomToken(int length) {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final buffer = StringBuffer();
+    for (var i = 0; i < length; i++) {
+      buffer.write(chars[_random.nextInt(chars.length)]);
+    }
+    return buffer.toString();
   }
 }

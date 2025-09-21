@@ -4,10 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
+import '../utils/uuid.dart';
 
 class ChatService {
   final SupabaseClient _client = SupabaseConfig.client;
   final Map<String, StreamSubscription> _subscriptions = {};
+  static bool _isGetUserChatsRpcAvailable = true;
+  static bool _isGetChatMessagesRpcAvailable = true;
 
   // 채팅방 생성 (대신팔기 지원)
   Future<ChatModel?> createChat({
@@ -18,17 +21,39 @@ class ChatService {
     String? originalSellerId, // 원 판매자 ID
   }) async {
     try {
+      // Validate participants (must all be UUIDs)
+      final validParticipants = participants.where(UuidUtils.isValid).toList();
+      if (validParticipants.length != participants.length) {
+        throw Exception('잘못된 사용자 ID가 포함되어 있습니다. 다시 로그인 후 시도해주세요.');
+      }
+
       // 이미 존재하는 채팅방 확인
-      final existingChat = await _findExistingChat(participants, productId, resellerId);
+      final existingChat = await _findExistingChat(
+        validParticipants,
+        productId,
+        resellerId,
+      );
       if (existingChat != null) return existingChat;
 
-      final response = await _client.from('chats').insert({
-        'participants': participants,
-        'product_id': productId,
-        'reseller_id': resellerId,
+      final payload = <String, dynamic>{
+        'participants': validParticipants,
         'is_resale_chat': isResaleChat,
-        'original_seller_id': originalSellerId,
-      }).select().single();
+      };
+      if (productId != null && UuidUtils.isValid(productId)) {
+        payload['product_id'] = productId;
+      }
+      if (resellerId != null && UuidUtils.isValid(resellerId)) {
+        payload['reseller_id'] = resellerId;
+      }
+      if (originalSellerId != null && UuidUtils.isValid(originalSellerId)) {
+        payload['original_seller_id'] = originalSellerId;
+      }
+
+      final response = await _client
+          .from('chats')
+          .insert(payload)
+          .select()
+          .single();
 
       final chat = ChatModel.fromJson(response);
 
@@ -36,7 +61,8 @@ class ChatService {
       if (isResaleChat && resellerId != null) {
         await sendSystemMessage(
           chatId: chat.id,
-          content: '🔔 대신팔기 채팅방 안내\n\n'
+          content:
+              '🔔 대신팔기 채팅방 안내\n\n'
               '이 채팅방은 대신팔기 상품 거래를 위한 채팅방입니다.\n'
               '대신판매자가 원 판매자를 대신하여 상품을 판매하고 있습니다.\n'
               '거래 시 대신판매 수수료가 적용됩니다.',
@@ -52,7 +78,7 @@ class ChatService {
 
   // 기존 채팅방 찾기 (대신팔기 지원)
   Future<ChatModel?> _findExistingChat(
-    List<String> participants, 
+    List<String> participants,
     String? productId,
     String? resellerId,
   ) async {
@@ -61,19 +87,19 @@ class ChatService {
           .from('chats')
           .select()
           .contains('participants', participants);
-      
-      if (productId != null) {
+
+      if (productId != null && UuidUtils.isValid(productId)) {
         query = query.eq('product_id', productId);
       }
 
       // 대신팔기 채팅방 구분
-      if (resellerId != null) {
+      if (resellerId != null && UuidUtils.isValid(resellerId)) {
         query = query.eq('reseller_id', resellerId);
       }
 
       final response = await query.maybeSingle();
       if (response == null) return null;
-      
+
       return ChatModel.fromJson(response);
     } catch (e) {
       print('Error finding existing chat: $e');
@@ -84,6 +110,10 @@ class ChatService {
   // 채팅방 ID로 조회
   Future<ChatModel?> getChatById(String chatId) async {
     try {
+      if (!UuidUtils.isValid(chatId)) {
+        print('getChatById skipped: invalid UUID "$chatId"');
+        return null;
+      }
       final response = await _client
           .from('chats')
           .select('*, products(title, images), messages(content, created_at)')
@@ -91,27 +121,28 @@ class ChatService {
           .single();
 
       final chat = ChatModel.fromJson(response);
-      
+
       // 추가 정보 설정
       if (response['products'] != null) {
         final product = response['products'];
         return chat.copyWith(
           productTitle: product['title'],
-          productImage: product['images']?.isNotEmpty == true 
-              ? product['images'][0] 
+          productImage: product['images']?.isNotEmpty == true
+              ? product['images'][0]
               : null,
         );
       }
-      
+
       // 마지막 메시지 정보
-      if (response['messages'] != null && (response['messages'] as List).isNotEmpty) {
+      if (response['messages'] != null &&
+          (response['messages'] as List).isNotEmpty) {
         final lastMsg = (response['messages'] as List).last;
         return chat.copyWith(
           lastMessage: lastMsg['content'],
           lastMessageTime: DateTime.parse(lastMsg['created_at']),
         );
       }
-      
+
       return chat;
     } catch (e) {
       print('Error getting chat by id: $e');
@@ -122,9 +153,19 @@ class ChatService {
   // 내 채팅방 목록 조회 (최적화된 버전)
   Future<List<ChatModel>> getMyChats(String userId) async {
     try {
+      // Guard: avoid Postgres 22P02 when userId is not a UUID
+      if (!UuidUtils.isValid(userId)) {
+        print('getMyChats skipped: invalid UUID "$userId"');
+        return [];
+      }
+      if (!_isGetUserChatsRpcAvailable) {
+        return await _getMyChatsBasic(userId);
+      }
       // 데이터베이스 함수를 사용하여 최적화된 쿼리 실행
-      final response = await _client
-          .rpc('get_user_chats', params: {'user_id': userId});
+      final response = await _client.rpc(
+        'get_user_chats',
+        params: {'user_id': userId},
+      );
 
       return (response as List).map((item) {
         return ChatModel.fromJson({
@@ -145,6 +186,13 @@ class ChatService {
         });
       }).toList();
     } catch (e) {
+      if (e is PostgrestException && e.code == 'PGRST202') {
+        _isGetUserChatsRpcAvailable = false;
+        print(
+          'get_user_chats rpc unavailable — falling back to basic chat query.',
+        );
+        return await _getMyChatsBasic(userId);
+      }
       print('Error getting my chats: $e');
       // Fallback to basic query if function fails
       return await _getMyChatsBasic(userId);
@@ -161,23 +209,23 @@ class ChatService {
           .order('updated_at', ascending: false);
 
       List<ChatModel> chats = [];
-      
+
       for (final item in response as List) {
         final chat = ChatModel.fromJson(item);
-        
+
         // 상품 정보 추가
         ChatModel updatedChat = chat;
         if (item['products'] != null) {
           final product = item['products'];
           updatedChat = chat.copyWith(
             productTitle: product['title'],
-            productImage: product['images']?.isNotEmpty == true 
-                ? product['images'][0] 
+            productImage: product['images']?.isNotEmpty == true
+                ? product['images'][0]
                 : null,
             productPrice: product['price'],
           );
         }
-        
+
         // 마지막 메시지 정보 조회
         final lastMessage = await _getLastMessage(chat.id);
         if (lastMessage != null) {
@@ -188,10 +236,10 @@ class ChatService {
             unreadCount: unreadCount,
           );
         }
-        
+
         chats.add(updatedChat);
       }
-      
+
       return chats;
     } catch (e) {
       print('Error getting basic chats: $e');
@@ -209,7 +257,7 @@ class ChatService {
           .order('created_at', ascending: false)
           .limit(1)
           .maybeSingle();
-      
+
       if (response != null) {
         return MessageModel.fromJson(response);
       }
@@ -223,6 +271,13 @@ class ChatService {
   // 읽지 않은 메시지 개수 조회
   Future<int> _getUnreadCount(String chatId, String userId) async {
     try {
+      // Guard: avoid invalid uuid errors
+      if (!UuidUtils.isValid(chatId) || !UuidUtils.isValid(userId)) {
+        print(
+          'getUnreadCount skipped: invalid UUID chatId="$chatId" userId="$userId"',
+        );
+        return 0;
+      }
       // 사용자의 마지막 읽음 시간 조회
       final readStatus = await _client
           .from('user_chat_read_status')
@@ -230,11 +285,12 @@ class ChatService {
           .eq('user_id', userId)
           .eq('chat_id', chatId)
           .maybeSingle();
-      
-      final lastReadAt = readStatus != null && readStatus['last_read_at'] != null
+
+      final lastReadAt =
+          readStatus != null && readStatus['last_read_at'] != null
           ? DateTime.parse(readStatus['last_read_at'])
           : DateTime.fromMillisecondsSinceEpoch(0);
-      
+
       // 마지막 읽음 시간 이후의 다른 사용자 메시지 개수
       final response = await _client
           .from('messages')
@@ -242,7 +298,7 @@ class ChatService {
           .eq('chat_id', chatId)
           .neq('sender_id', userId)
           .gt('created_at', lastReadAt.toIso8601String());
-      
+
       return (response as List).length;
     } catch (e) {
       print('Error getting unread count: $e');
@@ -258,12 +314,16 @@ class ChatService {
     String messageType = 'text',
   }) async {
     try {
-      final response = await _client.from('messages').insert({
-        'chat_id': chatId,
-        'sender_id': senderId,
-        'content': content,
-        'message_type': messageType,
-      }).select().single();
+      final response = await _client
+          .from('messages')
+          .insert({
+            'chat_id': chatId,
+            'sender_id': senderId,
+            'content': content,
+            'message_type': messageType,
+          })
+          .select()
+          .single();
 
       // 채팅방 업데이트 시간 갱신
       await _client
@@ -279,31 +339,61 @@ class ChatService {
   }
 
   // 채팅방 메시지 목록 조회 (최적화된 버전)
-  Future<List<MessageModel>> getChatMessages(String chatId, {
+  Future<List<MessageModel>> getChatMessages(
+    String chatId, {
     int limit = 50,
     int offset = 0,
   }) async {
     try {
+      if (!UuidUtils.isValid(chatId)) {
+        print('getChatMessages skipped: invalid UUID "$chatId"');
+        return [];
+      }
+      if (!_isGetChatMessagesRpcAvailable) {
+        return await _getChatMessagesBasic(
+          chatId,
+          limit: limit,
+          offset: offset,
+        );
+      }
       // 데이터베이스 함수를 사용하여 최적화된 쿼리 실행
-      final response = await _client.rpc('get_chat_messages', params: {
-        'chat_id_param': chatId,
-        'limit_param': limit,
-        'offset_param': offset,
-      });
+      final response = await _client.rpc(
+        'get_chat_messages',
+        params: {
+          'chat_id_param': chatId,
+          'limit_param': limit,
+          'offset_param': offset,
+        },
+      );
 
-      return (response as List).map((item) {
-        return MessageModel.fromJson({
-          'id': item['message_id'],
-          'chat_id': item['chat_id'],
-          'sender_id': item['sender_id'],
-          'content': item['content'],
-          'message_type': item['message_type'],
-          'created_at': item['created_at'],
-          'sender_name': item['sender_name'],
-          'sender_image': item['sender_profile_image'],
-        });
-      }).toList().reversed.toList(); // 시간순으로 정렬
+      return (response as List)
+          .map((item) {
+            return MessageModel.fromJson({
+              'id': item['message_id'],
+              'chat_id': item['chat_id'],
+              'sender_id': item['sender_id'],
+              'content': item['content'],
+              'message_type': item['message_type'],
+              'created_at': item['created_at'],
+              'sender_name': item['sender_name'],
+              'sender_image': item['sender_profile_image'],
+            });
+          })
+          .toList()
+          .reversed
+          .toList(); // 시간순으로 정렬
     } catch (e) {
+      if (e is PostgrestException && e.code == 'PGRST202') {
+        _isGetChatMessagesRpcAvailable = false;
+        print(
+          'get_chat_messages rpc unavailable — falling back to basic messages query.',
+        );
+        return await _getChatMessagesBasic(
+          chatId,
+          limit: limit,
+          offset: offset,
+        );
+      }
       print('Error getting chat messages with function: $e');
       // Fallback to basic query
       return await _getChatMessagesBasic(chatId, limit: limit, offset: offset);
@@ -311,7 +401,8 @@ class ChatService {
   }
 
   // 기본 메시지 조회 (fallback)
-  Future<List<MessageModel>> _getChatMessagesBasic(String chatId, {
+  Future<List<MessageModel>> _getChatMessagesBasic(
+    String chatId, {
     int limit = 50,
     int offset = 0,
   }) async {
@@ -323,19 +414,23 @@ class ChatService {
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
-      return (response as List).map((item) {
-        final message = MessageModel.fromJson(item);
-        
-        // 발송자 정보
-        if (item['users'] != null) {
-          return message.copyWith(
-            senderName: item['users']['name'],
-            senderImage: item['users']['profile_image'],
-          );
-        }
-        
-        return message;
-      }).toList().reversed.toList(); // 시간순으로 정렬
+      return (response as List)
+          .map((item) {
+            final message = MessageModel.fromJson(item);
+
+            // 발송자 정보
+            if (item['users'] != null) {
+              return message.copyWith(
+                senderName: item['users']['name'],
+                senderImage: item['users']['profile_image'],
+              );
+            }
+
+            return message;
+          })
+          .toList()
+          .reversed
+          .toList(); // 시간순으로 정렬
     } catch (e) {
       print('Error getting basic chat messages: $e');
       return [];
@@ -349,6 +444,13 @@ class ChatService {
   ) {
     // 기존 구독 해제
     unsubscribeFromChat(chatId);
+
+    if (!UuidUtils.isValid(chatId)) {
+      print('subscribeToChat skipped: invalid UUID "$chatId"');
+      final sub = Stream<List<Map<String, dynamic>>>.empty().listen((_) {});
+      _subscriptions[chatId] = sub;
+      return sub;
+    }
 
     // 새 구독 생성 - Supabase Realtime을 사용한 실시간 구독
     final subscription = _client
@@ -395,7 +497,7 @@ class ChatService {
   }) async {
     // 시스템 사용자 ID (특별한 ID 사용)
     const systemUserId = '00000000-0000-0000-0000-000000000000';
-    
+
     return sendMessage(
       chatId: chatId,
       senderId: systemUserId,
@@ -410,14 +512,14 @@ class ChatService {
     String? resellerName,
   }) async {
     String message = '안전거래가 시작되었습니다.\n';
-    
+
     if (resellerName != null) {
       message += SystemMessages.safeTransactionNotice(resellerName) + '\n';
     }
-    
+
     message += SystemMessages.safeTransactionGuide + '\n';
     message += SystemMessages.depositGuide;
-    
+
     await sendSystemMessage(chatId: chatId, content: message);
   }
 
@@ -446,18 +548,19 @@ class ChatService {
   }
 
   // 채팅 이미지 업로드
-  Future<String?> uploadChatImage(File imageFile, String chatId, String userId) async {
+  Future<String?> uploadChatImage(
+    File imageFile,
+    String chatId,
+    String userId,
+  ) async {
     try {
       final bytes = await imageFile.readAsBytes();
-      final fileName = 'chat_${chatId}_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      
-      await _client.storage
-          .from('chat-images')
-          .uploadBinary(fileName, bytes);
+      final fileName =
+          'chat_${chatId}_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      final url = _client.storage
-          .from('chat-images')
-          .getPublicUrl(fileName);
+      await _client.storage.from('chat-images').uploadBinary(fileName, bytes);
+
+      final url = _client.storage.from('chat-images').getPublicUrl(fileName);
 
       return url;
     } catch (e) {
@@ -478,10 +581,7 @@ class ChatService {
 
       if (updatedParticipants.isEmpty) {
         // 모든 참가자가 나가면 채팅방 삭제
-        await _client
-            .from('chats')
-            .delete()
-            .eq('id', chatId);
+        await _client.from('chats').delete().eq('id', chatId);
       } else {
         // 참가자 목록 업데이트
         await _client
@@ -501,13 +601,18 @@ class ChatService {
   // 채팅방 읽음 상태 업데이트
   Future<void> markChatAsRead(String chatId, String userId) async {
     try {
-      await _client
-          .from('user_chat_read_status')
-          .upsert({
-            'user_id': userId,
-            'chat_id': chatId,
-            'last_read_at': DateTime.now().toIso8601String(),
-          });
+      // Guard: avoid invalid uuid errors
+      if (!UuidUtils.isValid(chatId) || !UuidUtils.isValid(userId)) {
+        print(
+          'markChatAsRead skipped: invalid UUID chatId="$chatId" userId="$userId"',
+        );
+        return;
+      }
+      await _client.from('user_chat_read_status').upsert({
+        'user_id': userId,
+        'chat_id': chatId,
+        'last_read_at': DateTime.now().toIso8601String(),
+      });
     } catch (e) {
       print('Error marking chat as read: $e');
     }
@@ -544,7 +649,7 @@ class ChatService {
       for (String userId in chat.participants) {
         presence[userId] = true; // 실제로는 Presence 상태 확인
       }
-      
+
       return presence;
     } catch (e) {
       print('Error getting chat presence: $e');
@@ -553,11 +658,15 @@ class ChatService {
   }
 
   // 타이핑 상태 전송
-  Future<void> sendTypingStatus(String chatId, String userId, bool isTyping) async {
+  Future<void> sendTypingStatus(
+    String chatId,
+    String userId,
+    bool isTyping,
+  ) async {
     try {
       // Supabase Realtime Broadcast를 사용하여 타이핑 상태 전송
       final channel = _client.channel('chat:$chatId');
-      
+
       await channel.sendBroadcastMessage(
         event: 'typing',
         payload: {
@@ -572,22 +681,25 @@ class ChatService {
   }
 
   // 타이핑 상태 구독
-  void subscribeToTyping(String chatId, Function(String userId, bool isTyping) onTypingChange) {
+  void subscribeToTyping(
+    String chatId,
+    Function(String userId, bool isTyping) onTypingChange,
+  ) {
     try {
       final channel = _client.channel('chat:$chatId');
-      
+
       channel.onBroadcast(
         event: 'typing',
         callback: (payload) {
           final userId = payload['user_id'] as String?;
           final isTyping = payload['is_typing'] as bool?;
-          
+
           if (userId != null && isTyping != null) {
             onTypingChange(userId, isTyping);
           }
         },
       );
-      
+
       channel.subscribe();
     } catch (e) {
       print('Error subscribing to typing: $e');
@@ -603,7 +715,9 @@ class ChatService {
           .eq('chat_id', chatId);
 
       final totalMessages = (allMessages as List).length;
-      final imageMessages = allMessages.where((m) => m['message_type'] == 'image').length;
+      final imageMessages = allMessages
+          .where((m) => m['message_type'] == 'image')
+          .length;
       final textMessages = totalMessages - imageMessages;
 
       return {
@@ -613,11 +727,7 @@ class ChatService {
       };
     } catch (e) {
       print('Error getting chat stats: $e');
-      return {
-        'total_messages': 0,
-        'image_messages': 0,
-        'text_messages': 0,
-      };
+      return {'total_messages': 0, 'image_messages': 0, 'text_messages': 0};
     }
   }
 
@@ -626,4 +736,3 @@ class ChatService {
     unsubscribeAll();
   }
 }
-

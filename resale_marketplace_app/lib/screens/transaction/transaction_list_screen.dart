@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../services/transaction_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/transaction_model.dart';
-import '../../utils/app_router.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/safe_network_image.dart';
 
 class TransactionListScreen extends StatefulWidget {
   const TransactionListScreen({super.key});
@@ -12,18 +13,18 @@ class TransactionListScreen extends StatefulWidget {
   State<TransactionListScreen> createState() => _TransactionListScreenState();
 }
 
-class _TransactionListScreenState extends State<TransactionListScreen> 
+class _TransactionListScreenState extends State<TransactionListScreen>
     with SingleTickerProviderStateMixin {
   final TransactionService _transactionService = TransactionService();
   final AuthService _authService = AuthService();
-  
+
   late TabController _tabController;
   String? _selectedStatus;
   String _selectedRole = 'all'; // all, buyer, seller, reseller
   List<TransactionModel> _transactions = [];
   bool _isLoading = false;
   String? _currentUserId;
-  
+
   @override
   void initState() {
     super.initState();
@@ -35,13 +36,13 @@ class _TransactionListScreenState extends State<TransactionListScreen>
     });
     _loadTransactions();
   }
-  
+
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
   }
-  
+
   // 탭 변경 시 역할 필터 업데이트
   void _updateRoleFilter() {
     setState(() {
@@ -62,26 +63,26 @@ class _TransactionListScreenState extends State<TransactionListScreen>
     });
     _loadTransactions();
   }
-  
+
   // 거래 목록 로드
   Future<void> _loadTransactions() async {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       final user = await _authService.getCurrentUser();
       final userId = user?.id;
       if (userId == null) return;
-      
+
       _currentUserId = userId;
-      
+
       final transactions = await _transactionService.getMyTransactions(
         userId: userId,
         status: _selectedStatus,
         role: _selectedRole == 'all' ? null : _selectedRole,
       );
-      
+
       if (mounted) {
         setState(() {
           _transactions = transactions;
@@ -97,11 +98,11 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       }
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('거래 내역'),
@@ -126,14 +127,14 @@ class _TransactionListScreenState extends State<TransactionListScreen>
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _transactions.isEmpty
-                    ? _buildEmptyState(theme)
-                    : _buildTransactionList(theme),
+                ? _buildEmptyState(theme)
+                : _buildTransactionList(theme),
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildStatusFilter(ThemeData theme) {
     return Container(
       height: 50,
@@ -172,7 +173,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       ),
     );
   }
-  
+
   Widget _buildFilterChip({
     required ThemeData theme,
     required String label,
@@ -192,11 +193,11 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       checkmarkColor: theme.colorScheme.primary,
     );
   }
-  
+
   Widget _buildEmptyState(ThemeData theme) {
     String message;
     IconData icon;
-    
+
     switch (_selectedRole) {
       case 'buyer':
         message = '구매 내역이 없습니다';
@@ -214,7 +215,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
         message = '거래 내역이 없습니다';
         icon = Icons.receipt_long_outlined;
     }
-    
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -235,7 +236,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       ),
     );
   }
-  
+
   Widget _buildTransactionList(ThemeData theme) {
     return RefreshIndicator(
       onRefresh: _loadTransactions,
@@ -249,13 +250,13 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       ),
     );
   }
-  
+
   Widget _buildTransactionCard(ThemeData theme, TransactionModel transaction) {
     final userId = _currentUserId;
     final isBuyer = transaction.buyerId == userId;
     final isSeller = transaction.sellerId == userId;
     final isReseller = transaction.resellerId == userId;
-    
+
     // 역할 표시
     String roleText = '';
     Color roleColor = theme.colorScheme.primary;
@@ -269,7 +270,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       roleText = '대신판매';
       roleColor = Colors.orange;
     }
-    
+
     // 상태 색상
     Color statusColor;
     switch (transaction.status) {
@@ -285,15 +286,14 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       default:
         statusColor = theme.colorScheme.onSurfaceVariant;
     }
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
-          Navigator.pushNamed(
-            context,
-            AppRouter.transactionDetail,
-            arguments: transaction.id,
+          context.pushNamed(
+            'transaction-detail',
+            pathParameters: {'id': transaction.id},
           );
         },
         borderRadius: BorderRadius.circular(12),
@@ -345,40 +345,17 @@ class _TransactionListScreenState extends State<TransactionListScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               // 상품 정보
               Row(
                 children: [
                   // 상품 이미지
-                  ClipRRect(
+                  SafeNetworkImage(
+                    imageUrl: transaction.productImage,
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
                     borderRadius: BorderRadius.circular(8),
-                    child: transaction.productImage != null
-                        ? Image.network(
-                            transaction.productImage!,
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 60,
-                                height: 60,
-                                color: theme.colorScheme.surfaceVariant,
-                                child: Icon(
-                                  Icons.image,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              );
-                            },
-                          )
-                        : Container(
-                            width: 60,
-                            height: 60,
-                            color: theme.colorScheme.surfaceVariant,
-                            child: Icon(
-                              Icons.image,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
                   ),
                   const SizedBox(width: 12),
                   // 상품 정보 텍스트
@@ -406,7 +383,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               // 거래 정보
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -422,7 +399,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
                         ),
                       ),
                       Text(
-                        isBuyer 
+                        isBuyer
                             ? transaction.sellerName ?? '알 수 없음'
                             : transaction.buyerName ?? '알 수 없음',
                         style: theme.textTheme.bodyMedium,
@@ -447,7 +424,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
                   ),
                 ],
               ),
-              
+
               // 대신판매 정보 (있는 경우)
               if (transaction.isResaleTransaction) ...[
                 const SizedBox(height: 8),
@@ -477,7 +454,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
                   ),
                 ),
               ],
-              
+
               // 안전거래 표시 (있는 경우)
               if (transaction.isSafeTransaction) ...[
                 const SizedBox(height: 8),
@@ -489,11 +466,7 @@ class _TransactionListScreenState extends State<TransactionListScreen>
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.security,
-                        size: 16,
-                        color: Colors.green,
-                      ),
+                      const Icon(Icons.security, size: 16, color: Colors.green),
                       const SizedBox(width: 4),
                       Text(
                         '안전거래',
@@ -512,11 +485,11 @@ class _TransactionListScreenState extends State<TransactionListScreen>
       ),
     );
   }
-  
+
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {
         return '${difference.inMinutes}분 전';

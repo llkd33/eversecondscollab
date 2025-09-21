@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/safe_network_image.dart';
 import '../../services/chat_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/chat_model.dart';
 import '../../models/user_model.dart';
-import 'chat_room_screen.dart';
+import 'package:go_router/go_router.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -30,7 +31,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _loadChats() async {
     try {
       setState(() => _isLoading = true);
-      
+
       _currentUser = await _authService.getCurrentUser();
       if (_currentUser != null) {
         final chats = await _chatService.getMyChats(_currentUser!.id);
@@ -52,7 +53,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Scaffold(
       appBar: const ChatAppBar(),
       backgroundColor: AppTheme.backgroundColor,
-      body: _isLoading 
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildChatList(),
     );
@@ -68,7 +69,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
       child: ListView.separated(
         padding: const EdgeInsets.all(AppSpacing.md),
         itemCount: _chats.length,
-        separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),
+        separatorBuilder: (context, index) =>
+            const SizedBox(height: AppSpacing.sm),
         itemBuilder: (context, index) {
           final chat = _chats[index];
           return _ChatListItem(
@@ -85,24 +87,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
           const SizedBox(height: AppSpacing.md),
           Text(
             '아직 채팅방이 없습니다',
-            style: AppStyles.headingSmall.copyWith(
-              color: Colors.grey[600],
-            ),
+            style: AppStyles.headingSmall.copyWith(color: Colors.grey[600]),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '상품에 관심을 표시하면\n채팅방이 생성됩니다',
-            style: AppStyles.bodyMedium.copyWith(
-              color: Colors.grey[500],
-            ),
+            style: AppStyles.bodyMedium.copyWith(color: Colors.grey[500]),
             textAlign: TextAlign.center,
           ),
         ],
@@ -114,21 +108,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
 class _ChatListItem extends StatelessWidget {
   final ChatModel chat;
   final String currentUserId;
-  
-  const _ChatListItem({
-    required this.chat,
-    required this.currentUserId,
-  });
+
+  const _ChatListItem({required this.chat, required this.currentUserId});
 
   @override
   Widget build(BuildContext context) {
     final hasUnreadMessages = (chat.unreadCount ?? 0) > 0;
-    
+
     return Card(
       elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _navigateToChatRoom(context),
@@ -138,9 +127,7 @@ class _ChatListItem extends StatelessWidget {
             children: [
               _buildUserAvatar(),
               const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: _buildChatInfo(hasUnreadMessages),
-              ),
+              Expanded(child: _buildChatInfo(hasUnreadMessages)),
               const SizedBox(width: AppSpacing.sm),
               _buildProductPreview(),
             ],
@@ -156,12 +143,14 @@ class _ChatListItem extends StatelessWidget {
       (id) => id != currentUserId,
       orElse: () => '',
     );
-    
+
     return CircleAvatar(
       radius: 26,
       backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
       child: Text(
-        otherParticipant.isNotEmpty ? otherParticipant.substring(0, 1).toUpperCase() : '?',
+        otherParticipant.isNotEmpty
+            ? otherParticipant.substring(0, 1).toUpperCase()
+            : '?',
         style: const TextStyle(
           color: AppTheme.primaryColor,
           fontWeight: FontWeight.bold,
@@ -177,13 +166,13 @@ class _ChatListItem extends StatelessWidget {
       (id) => id != currentUserId,
       orElse: () => 'Unknown',
     );
-    
+
     // 채팅방 제목 결정 (대신팔기 정보 포함)
     String chatTitle = chat.productTitle ?? otherParticipant;
     if (chat.isResaleChat && chat.resellerName != null) {
       chatTitle = '${chat.productTitle} (${chat.resellerName}님이 대신판매)';
     }
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -193,7 +182,9 @@ class _ChatListItem extends StatelessWidget {
               child: Text(
                 chatTitle,
                 style: AppStyles.bodyMedium.copyWith(
-                  fontWeight: hasUnreadMessages ? FontWeight.bold : FontWeight.w600,
+                  fontWeight: hasUnreadMessages
+                      ? FontWeight.bold
+                      : FontWeight.w600,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -202,8 +193,12 @@ class _ChatListItem extends StatelessWidget {
             Text(
               _formatTime(chat.lastMessageTime ?? chat.updatedAt),
               style: AppStyles.bodySmall.copyWith(
-                color: hasUnreadMessages ? AppTheme.primaryColor : Colors.grey[600],
-                fontWeight: hasUnreadMessages ? FontWeight.w600 : FontWeight.normal,
+                color: hasUnreadMessages
+                    ? AppTheme.primaryColor
+                    : Colors.grey[600],
+                fontWeight: hasUnreadMessages
+                    ? FontWeight.w600
+                    : FontWeight.normal,
               ),
             ),
           ],
@@ -213,11 +208,7 @@ class _ChatListItem extends StatelessWidget {
         if (chat.isResaleChat) ...[
           Row(
             children: [
-              Icon(
-                Icons.store,
-                size: 12,
-                color: Colors.orange[600],
-              ),
+              Icon(Icons.store, size: 12, color: Colors.orange[600]),
               const SizedBox(width: 4),
               Text(
                 '대신판매 거래',
@@ -245,18 +236,12 @@ class _ChatListItem extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.red,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                constraints: const BoxConstraints(
-                  minWidth: 20,
-                  minHeight: 20,
-                ),
+                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                 child: Text(
                   chat.unreadCount! > 99 ? '99+' : chat.unreadCount.toString(),
                   style: const TextStyle(
@@ -273,11 +258,11 @@ class _ChatListItem extends StatelessWidget {
       ],
     );
   }
-  
+
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
-    
+
     if (difference.inMinutes < 1) {
       return '방금 전';
     } else if (difference.inMinutes < 60) {
@@ -295,7 +280,7 @@ class _ChatListItem extends StatelessWidget {
     if (chat.productId == null) {
       return const SizedBox.shrink();
     }
-    
+
     return Container(
       width: 80,
       padding: const EdgeInsets.all(AppSpacing.sm),
@@ -316,18 +301,12 @@ class _ChatListItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
             ),
             child: chat.productImage != null
-                ? ClipRRect(
+                ? SafeNetworkImage(
+                    imageUrl: chat.productImage!,
+                    fit: BoxFit.cover,
                     borderRadius: BorderRadius.circular(6),
-                    child: Image.network(
-                      chat.productImage!,
-                      fit: BoxFit.cover,
-                    ),
                   )
-                : const Icon(
-                    Icons.image,
-                    color: Colors.grey,
-                    size: 20,
-                  ),
+                : const Icon(Icons.image, color: Colors.grey, size: 20),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
@@ -365,19 +344,14 @@ class _ChatListItem extends StatelessWidget {
       (id) => id != currentUserId,
       orElse: () => 'Unknown',
     );
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatRoomScreen(
-          chatRoomId: chat.id,
-          userName: chat.otherUserName ?? otherParticipant,
-          productTitle: chat.productTitle ?? '',
-          isResaleChat: chat.isResaleChat,
-          resellerName: chat.resellerName,
-          originalSellerName: chat.originalSellerName,
-        ),
-      ),
+
+    context.push(
+      '/chat_room',
+      extra: {
+        'chatRoomId': chat.id,
+        'userName': chat.otherUserName ?? otherParticipant,
+        'productTitle': chat.productTitle ?? '',
+      },
     );
   }
 }

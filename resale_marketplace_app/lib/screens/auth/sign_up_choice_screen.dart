@@ -20,10 +20,13 @@ class SignUpChoiceScreen extends StatelessWidget {
               label: const Text('카카오로 가입하기'),
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => context.push('/signup/phone'),
-              icon: const Icon(Icons.phone_android),
-              label: const Text('일반 회원가입 (전화번호)'),
+            Tooltip(
+              message: '카카오 연동 완료 후 제공될 예정입니다.',
+              child: OutlinedButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.phone_android),
+                label: const Text('일반 회원가입 (준비 중)'),
+              ),
             ),
             const Spacer(),
             const Text(
@@ -36,4 +39,3 @@ class SignUpChoiceScreen extends StatelessWidget {
     );
   }
 }
-

@@ -3,81 +3,83 @@ import '../../services/transaction_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/transaction_model.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/safe_network_image.dart';
 
 class RevenueManagementScreen extends StatefulWidget {
   const RevenueManagementScreen({super.key});
 
   @override
-  State<RevenueManagementScreen> createState() => _RevenueManagementScreenState();
+  State<RevenueManagementScreen> createState() =>
+      _RevenueManagementScreenState();
 }
 
 class _RevenueManagementScreenState extends State<RevenueManagementScreen>
     with SingleTickerProviderStateMixin {
   final TransactionService _transactionService = TransactionService();
   final AuthService _authService = AuthService();
-  
+
   late TabController _tabController;
   List<TransactionModel> _sellTransactions = [];
   List<TransactionModel> _resellTransactions = [];
   Map<String, dynamic> _stats = {};
   bool _isLoading = true;
   String? _currentUserId;
-  
+
   // 수익 통계
   int _totalSellRevenue = 0;
   int _totalResellRevenue = 0;
   int _thisMonthSellRevenue = 0;
   int _thisMonthResellRevenue = 0;
-  
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadRevenueData();
   }
-  
+
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _loadRevenueData() async {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       final user = await _authService.getCurrentUser();
       final userId = user?.id;
       if (userId == null) return;
-      
+
       _currentUserId = userId;
-      
+
       // 판매 거래 내역 조회
       final sellTransactions = await _transactionService.getMyTransactions(
         userId: userId,
         role: 'seller',
         status: TransactionStatus.completed,
       );
-      
+
       // 대신판매 거래 내역 조회
       final resellTransactions = await _transactionService.getMyTransactions(
         userId: userId,
         role: 'reseller',
         status: TransactionStatus.completed,
       );
-      
+
       // 거래 통계 조회
       final stats = await _transactionService.getTransactionStats(userId);
-      
+
       if (mounted) {
         setState(() {
           _sellTransactions = sellTransactions;
           _resellTransactions = resellTransactions;
           _stats = stats;
         });
-        
+
         _calculateRevenue();
       }
     } catch (e) {
@@ -90,34 +92,38 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       }
     }
   }
-  
+
   void _calculateRevenue() {
     final now = DateTime.now();
     final thisMonth = DateTime(now.year, now.month);
-    
+
     // 판매 수익 계산
     _totalSellRevenue = _sellTransactions.fold(0, (sum, transaction) {
       return sum + transaction.sellerAmount;
     });
-    
+
     _thisMonthSellRevenue = _sellTransactions
-        .where((transaction) => transaction.completedAt?.isAfter(thisMonth) == true)
+        .where(
+          (transaction) => transaction.completedAt?.isAfter(thisMonth) == true,
+        )
         .fold(0, (sum, transaction) => sum + transaction.sellerAmount);
-    
+
     // 대신판매 수익 계산
     _totalResellRevenue = _resellTransactions.fold(0, (sum, transaction) {
       return sum + transaction.resellerCommission;
     });
-    
+
     _thisMonthResellRevenue = _resellTransactions
-        .where((transaction) => transaction.completedAt?.isAfter(thisMonth) == true)
+        .where(
+          (transaction) => transaction.completedAt?.isAfter(thisMonth) == true,
+        )
         .fold(0, (sum, transaction) => sum + transaction.resellerCommission);
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('수익 관리'),
@@ -150,16 +156,14 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
             ),
     );
   }
-  
+
   Widget _buildRevenueSummary(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer.withOpacity(0.3),
         border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
-          ),
+          bottom: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2)),
         ),
       ),
       child: Column(
@@ -211,7 +215,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       ),
     );
   }
-  
+
   Widget _buildRevenueCard({
     required ThemeData theme,
     required String title,
@@ -225,17 +229,11 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-        ),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: color,
-            size: isSmall ? 20 : 24,
-          ),
+          Icon(icon, color: color, size: isSmall ? 20 : 24),
           SizedBox(height: isSmall ? 4 : 8),
           Text(
             title,
@@ -247,18 +245,17 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
           SizedBox(height: isSmall ? 2 : 4),
           Text(
             _formatPrice(amount),
-            style: (isSmall 
-                ? theme.textTheme.titleSmall 
-                : theme.textTheme.titleMedium)?.copyWith(
-              color: color,
-              fontWeight: FontWeight.bold,
-            ),
+            style:
+                (isSmall
+                        ? theme.textTheme.titleSmall
+                        : theme.textTheme.titleMedium)
+                    ?.copyWith(color: color, fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildSellRevenueTab(ThemeData theme) {
     if (_sellTransactions.isEmpty) {
       return _buildEmptyState(
@@ -267,7 +264,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
         message: '판매 완료된 거래가 없습니다',
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: _loadRevenueData,
       child: ListView.builder(
@@ -286,7 +283,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       ),
     );
   }
-  
+
   Widget _buildResellRevenueTab(ThemeData theme) {
     if (_resellTransactions.isEmpty) {
       return _buildEmptyState(
@@ -295,7 +292,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
         message: '대신판매 완료된 거래가 없습니다',
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: _loadRevenueData,
       child: ListView.builder(
@@ -314,7 +311,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       ),
     );
   }
-  
+
   Widget _buildRevenueTransactionCard({
     required ThemeData theme,
     required TransactionModel transaction,
@@ -360,40 +357,17 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
               ],
             ),
             const SizedBox(height: 12),
-            
+
             // 상품 정보
             Row(
               children: [
                 // 상품 이미지
-                ClipRRect(
+                SafeNetworkImage(
+                  imageUrl: transaction.productImage,
+                  width: 60,
+                  height: 60,
+                  fit: BoxFit.cover,
                   borderRadius: BorderRadius.circular(8),
-                  child: transaction.productImage != null
-                      ? Image.network(
-                          transaction.productImage!,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 60,
-                              height: 60,
-                              color: theme.colorScheme.surfaceVariant,
-                              child: Icon(
-                                Icons.image,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          width: 60,
-                          height: 60,
-                          color: theme.colorScheme.surfaceVariant,
-                          child: Icon(
-                            Icons.image,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
                 ),
                 const SizedBox(width: 12),
                 // 상품 정보 텍스트
@@ -429,7 +403,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
               ],
             ),
             const SizedBox(height: 12),
-            
+
             // 거래 정보
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -470,7 +444,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
                 ),
               ],
             ),
-            
+
             // 안전거래 표시 (있는 경우)
             if (transaction.isSafeTransaction) ...[
               const SizedBox(height: 8),
@@ -482,11 +456,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.security,
-                      size: 16,
-                      color: Colors.green,
-                    ),
+                    const Icon(Icons.security, size: 16, color: Colors.green),
                     const SizedBox(width: 4),
                     Text(
                       '안전거래',
@@ -504,7 +474,7 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       ),
     );
   }
-  
+
   Widget _buildEmptyState({
     required ThemeData theme,
     required IconData icon,
@@ -530,14 +500,11 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
       ),
     );
   }
-  
+
   String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}원';
+    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   }
-  
+
   String _formatDate(DateTime date) {
     return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
   }

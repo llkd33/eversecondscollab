@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../../services/transaction_service.dart';
 import '../../services/chat_service.dart';
 import '../../models/product_model.dart';
 import '../../models/transaction_model.dart';
-import '../../utils/app_router.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/safe_network_image.dart';
 
 class TransactionCreationScreen extends StatefulWidget {
   final ProductModel product;
@@ -24,21 +25,22 @@ class TransactionCreationScreen extends StatefulWidget {
   });
 
   @override
-  State<TransactionCreationScreen> createState() => _TransactionCreationScreenState();
+  State<TransactionCreationScreen> createState() =>
+      _TransactionCreationScreenState();
 }
 
 class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
   final TransactionService _transactionService = TransactionService();
   final ChatService _chatService = ChatService();
-  
+
   String _selectedTransactionType = TransactionType.normal;
   int _resaleFee = 0;
   final _resaleFeeController = TextEditingController();
   bool _isLoading = false;
-  
+
   // 대신판매 거래 여부
   bool get isResaleTransaction => widget.resellerId != null;
-  
+
   @override
   void initState() {
     super.initState();
@@ -48,19 +50,19 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       _resaleFeeController.text = _resaleFee.toString();
     }
   }
-  
+
   @override
   void dispose() {
     _resaleFeeController.dispose();
     super.dispose();
   }
-  
+
   // 거래 생성
   Future<void> _createTransaction() async {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       // 채팅방이 없으면 생성
       String? chatId = widget.chatId;
@@ -74,7 +76,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
         );
         chatId = chat?.id;
       }
-      
+
       // 거래 생성
       final transaction = await _transactionService.createTransaction(
         productId: widget.product.id,
@@ -86,13 +88,12 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
         chatId: chatId,
         transactionType: _selectedTransactionType,
       );
-      
+
       if (transaction != null && mounted) {
         // 거래 상세 화면으로 이동
-        Navigator.pushReplacementNamed(
-          context,
-          AppRouter.transactionDetail,
-          arguments: transaction.id,
+        context.goNamed(
+          'transaction-detail',
+          pathParameters: {'id': transaction.id},
         );
       } else {
         _showError('거래 생성에 실패했습니다.');
@@ -107,7 +108,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       }
     }
   }
-  
+
   // 에러 메시지 표시
   void _showError(String message) {
     if (!mounted) return;
@@ -115,16 +116,13 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('거래 시작하기'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('거래 시작하기'), centerTitle: true),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -133,21 +131,21 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
             // 상품 정보
             _buildProductInfo(theme),
             const SizedBox(height: 24),
-            
+
             // 거래 타입 선택
             _buildTransactionTypeSection(theme),
             const SizedBox(height: 24),
-            
+
             // 대신판매 수수료 설정 (대신판매 거래인 경우만)
             if (isResaleTransaction) ...[
               _buildResaleFeeSection(theme),
               const SizedBox(height: 24),
             ],
-            
+
             // 거래 금액 요약
             _buildPriceSummary(theme),
             const SizedBox(height: 24),
-            
+
             // 거래 주의사항
             _buildNoticeSection(theme),
           ],
@@ -189,7 +187,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       ),
     );
   }
-  
+
   Widget _buildProductInfo(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -200,24 +198,14 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       child: Row(
         children: [
           // 상품 이미지
-          ClipRRect(
+          SafeNetworkImage(
+            imageUrl: widget.product.images.isNotEmpty
+                ? widget.product.images[0]
+                : null,
+            width: 80,
+            height: 80,
+            fit: BoxFit.cover,
             borderRadius: BorderRadius.circular(8),
-            child: widget.product.images.isNotEmpty
-                ? Image.network(
-                    widget.product.images[0],
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                  )
-                : Container(
-                    width: 80,
-                    height: 80,
-                    color: theme.colorScheme.surfaceVariant,
-                    child: Icon(
-                      Icons.image,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
           ),
           const SizedBox(width: 16),
           // 상품 정보
@@ -246,7 +234,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       ),
     );
   }
-  
+
   Widget _buildTransactionTypeSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,7 +269,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       ],
     );
   }
-  
+
   Widget _buildTransactionTypeCard({
     required ThemeData theme,
     required String type,
@@ -331,9 +319,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
                         title,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: isSelected
-                              ? theme.colorScheme.primary
-                              : null,
+                          color: isSelected ? theme.colorScheme.primary : null,
                         ),
                       ),
                       if (badge != null) ...[
@@ -383,7 +369,7 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       ),
     );
   }
-  
+
   Widget _buildResaleFeeSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,18 +437,16 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       ],
     );
   }
-  
+
   Widget _buildPriceSummary(ThemeData theme) {
     final sellerAmount = widget.product.price - _resaleFee;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.3),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -527,16 +511,14 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       ),
     );
   }
-  
+
   Widget _buildNoticeSection(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.error.withOpacity(0.3),
-        ),
+        border: Border.all(color: theme.colorScheme.error.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -562,24 +544,19 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
           Text(
             _selectedTransactionType == TransactionType.safe
                 ? '• 안전거래는 플랫폼이 중개하여 안전한 거래를 보장합니다\n'
-                  '• 구매자는 상품을 받은 후 구매확정을 해야 합니다\n'
-                  '• 판매자는 입금 확인 후 배송을 시작해야 합니다'
+                      '• 구매자는 상품을 받은 후 구매확정을 해야 합니다\n'
+                      '• 판매자는 입금 확인 후 배송을 시작해야 합니다'
                 : '• 일반거래는 당사자 간 직접 거래입니다\n'
-                  '• 거래 시 발생하는 문제에 대한 책임은 당사자에게 있습니다\n'
-                  '• 안전한 거래를 위해 안전거래를 권장합니다',
-            style: theme.textTheme.bodySmall?.copyWith(
-              height: 1.5,
-            ),
+                      '• 거래 시 발생하는 문제에 대한 책임은 당사자에게 있습니다\n'
+                      '• 안전한 거래를 위해 안전거래를 권장합니다',
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
           ),
         ],
       ),
     );
   }
-  
+
   String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}원';
+    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   }
 }

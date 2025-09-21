@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
 import '../../models/shop_model.dart';
 import '../../models/product_model.dart';
 import '../../models/user_model.dart';
 import '../../services/shop_service.dart';
 import '../../services/user_service.dart';
-import '../../services/product_service.dart';
+import '../../providers/auth_provider.dart';
 
 class MyShopScreen extends StatefulWidget {
   const MyShopScreen({super.key});
@@ -23,7 +23,6 @@ class _MyShopScreenState extends State<MyShopScreen>
   late TabController _tabController;
   final ShopService _shopService = ShopService();
   final UserService _userService = UserService();
-  final ProductService _productService = ProductService();
 
   UserModel? _currentUser;
   ShopModel? _currentShop;
@@ -46,31 +45,59 @@ class _MyShopScreenState extends State<MyShopScreen>
     try {
       setState(() => _isLoading = true);
 
-      // 현재 사용자 정보 가져오기
-      _currentUser = await _userService.getCurrentUser();
-      if (_currentUser == null) {
-        // 로그인되지 않은 경우 로그인 화면으로 이동
+      final authProvider = context.read<AuthProvider>();
+
+      if (!authProvider.isAuthenticated) {
         if (mounted) {
-          context.go('/login');
+          const redirectPath = '/shop';
+          final encoded = Uri.encodeComponent(redirectPath);
+          context.go('/login?redirect=$encoded');
+        }
+        return;
+      }
+
+      _currentUser = authProvider.currentUser;
+
+      if (_currentUser == null) {
+        final autoLoginSucceeded = await authProvider.tryAutoLogin();
+        if (autoLoginSucceeded) {
+          _currentUser = authProvider.currentUser;
+        }
+      }
+
+      _currentUser ??= await _userService.getCurrentUser();
+
+      if (_currentUser == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('사용자 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'),
+            ),
+          );
         }
         return;
       }
 
       // 사용자의 샵 정보 가져오기
       _currentShop = await _shopService.getShopByOwnerId(_currentUser!.id);
-      
+
       if (_currentShop == null) {
         // 샵이 없으면 생성
-        _currentShop = await _shopService.ensureUserShop(_currentUser!.id, _currentUser!.name);
+        _currentShop = await _shopService.ensureUserShop(
+          _currentUser!.id,
+          _currentUser!.name,
+        );
       }
 
       if (_currentShop != null) {
         // 내 상품 목록 가져오기
         _myProducts = await _shopService.getShopProducts(_currentShop!.id);
-        
+
         // 대신팔기 상품 목록 가져오기
-        _resaleProducts = await _shopService.getShopResaleProducts(_currentShop!.id);
-        
+        _resaleProducts = await _shopService.getShopResaleProducts(
+          _currentShop!.id,
+        );
+
         // 샵 통계 가져오기
         _shopStats = await _shopService.getShopStats(_currentShop!.id);
       }
@@ -99,11 +126,11 @@ class _MyShopScreenState extends State<MyShopScreen>
 
   void _shareShopLink(BuildContext context) {
     if (_currentShop == null) return;
-    
+
     final shopLink = 'https://everseconds.com/shop/${_currentShop!.shareUrl}';
-    
+
     Clipboard.setData(ClipboardData(text: shopLink));
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Row(
@@ -115,9 +142,7 @@ class _MyShopScreenState extends State<MyShopScreen>
         ),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         action: SnackBarAction(
           label: '공유하기',
           textColor: Colors.white,
@@ -149,10 +174,7 @@ class _MyShopScreenState extends State<MyShopScreen>
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      shopLink,
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                    child: Text(shopLink, style: const TextStyle(fontSize: 12)),
                   ),
                   IconButton(
                     icon: const Icon(Icons.copy, size: 16),
@@ -202,13 +224,13 @@ class _MyShopScreenState extends State<MyShopScreen>
             name: name,
             description: description,
           );
-          
+
           if (success) {
             await _loadShopData(); // 데이터 새로고침
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('샵 정보가 업데이트되었습니다')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('샵 정보가 업데이트되었습니다')));
             }
           } else {
             if (mounted) {
@@ -228,56 +250,62 @@ class _MyShopScreenState extends State<MyShopScreen>
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight + kTextTabBarHeight),
-        child: Column(
-          children: [
-            _ShopAppBar(
-              shopName: _currentShop?.name ?? '내 샵',
-              onSharePressed: () => _shareShopLink(context),
-              onEditPressed: _editShopInfo,
-            ),
-            Container(
-              color: Colors.white,
-              child: TabBar(
-                controller: _tabController,
-                labelColor: AppTheme.primaryColor,
-                unselectedLabelColor: Colors.grey,
-                indicatorColor: AppTheme.primaryColor,
-                indicatorWeight: 3,
-                tabs: [
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.inventory_2_outlined, size: 16),
-                        const SizedBox(width: 4),
-                        Text('내 상품 (${_myProducts.length})'),
-                      ],
-                    ),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        title: Text(_currentShop?.name ?? '내 샵'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: _editShopInfo,
+            tooltip: '샵 정보 수정',
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () => _shareShopLink(context),
+            tooltip: '샵 공유',
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(kTextTabBarHeight),
+          child: Container(
+            color: Colors.white,
+            child: TabBar(
+              isScrollable: true,
+              controller: _tabController,
+              labelColor: AppTheme.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppTheme.primaryColor,
+              indicatorWeight: 3,
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.inventory_2_outlined, size: 16),
+                      const SizedBox(width: 4),
+                      Text('내 상품 (${_myProducts.length})'),
+                    ],
                   ),
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.storefront_outlined, size: 16),
-                        const SizedBox(width: 4),
-                        Text('대신팔기 (${_resaleProducts.length})'),
-                      ],
-                    ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.storefront_outlined, size: 16),
+                      const SizedBox(width: 4),
+                      Text('대신팔기 (${_resaleProducts.length})'),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
       body: TabBarView(
@@ -306,8 +334,8 @@ class _MyShopScreenState extends State<MyShopScreen>
             context.push('/resale/browse').then((_) => _loadShopData());
           }
         },
-        backgroundColor: _tabController.index == 0 
-            ? AppTheme.primaryColor 
+        backgroundColor: _tabController.index == 0
+            ? AppTheme.primaryColor
             : Colors.green,
         foregroundColor: Colors.white,
         child: Icon(_tabController.index == 0 ? Icons.add : Icons.search),
@@ -327,9 +355,9 @@ class _MyShopScreenState extends State<MyShopScreen>
       if (success) {
         await _loadShopData();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('대신팔기 상품이 제거되었습니다')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('대신팔기 상품이 제거되었습니다')));
         }
       } else {
         if (mounted) {
@@ -417,13 +445,15 @@ class _MyProductsTab extends StatelessWidget {
                   ),
                   _SummaryItem(
                     title: '판매중',
-                    value: '${products.where((p) => p.status == '판매중').length}개',
+                    value:
+                        '${products.where((p) => p.status == '판매중').length}개',
                     textColor: Colors.white,
                     icon: Icons.storefront,
                   ),
                   _SummaryItem(
                     title: '판매완료',
-                    value: '${products.where((p) => p.status == '판매완료').length}개',
+                    value:
+                        '${products.where((p) => p.status == '판매완료').length}개',
                     textColor: Colors.white,
                     icon: Icons.check_circle,
                   ),
@@ -432,7 +462,7 @@ class _MyProductsTab extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // 상품 관리 버튼들
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -457,8 +487,7 @@ class _MyProductsTab extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    // TODO: 상품 관리 화면으로 이동
-                    context.push('/product/manage');
+                    context.push('/my-products');
                   },
                   icon: const Icon(Icons.edit, size: 18),
                   label: const Text('상품 관리'),
@@ -473,9 +502,9 @@ class _MyProductsTab extends StatelessWidget {
             ],
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // 상품 리스트
         Expanded(
           child: products.isEmpty
@@ -491,18 +520,12 @@ class _MyProductsTab extends StatelessWidget {
                       SizedBox(height: 16),
                       Text(
                         '등록된 상품이 없습니다',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                       SizedBox(height: 8),
                       Text(
                         '첫 상품을 등록해보세요!',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -595,13 +618,15 @@ class _ResaleProductsTab extends StatelessWidget {
                   ),
                   _SummaryItem(
                     title: '판매중',
-                    value: '${products.where((p) => p.status == '판매중').length}개',
+                    value:
+                        '${products.where((p) => p.status == '판매중').length}개',
                     textColor: Colors.white,
                     icon: Icons.storefront,
                   ),
                   _SummaryItem(
                     title: '판매완료',
-                    value: '${products.where((p) => p.status == '판매완료').length}개',
+                    value:
+                        '${products.where((p) => p.status == '판매완료').length}개',
                     textColor: Colors.white,
                     icon: Icons.trending_up,
                   ),
@@ -610,7 +635,7 @@ class _ResaleProductsTab extends StatelessWidget {
             ],
           ),
         ),
-        
+
         // 대신팔기 관리 버튼들
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -654,9 +679,9 @@ class _ResaleProductsTab extends StatelessWidget {
             ],
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // 대신팔기 상품 리스트
         Expanded(
           child: products.isEmpty
@@ -672,18 +697,12 @@ class _ResaleProductsTab extends StatelessWidget {
                       SizedBox(height: 16),
                       Text(
                         '대신팔기 상품이 없습니다',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                       SizedBox(height: 8),
                       Text(
                         '상품을 찾아서 대신팔기를 시작해보세요!',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -710,8 +729,6 @@ class _ResaleProductsTab extends StatelessWidget {
       ],
     );
   }
-
-
 }
 
 class _StatRow extends StatelessWidget {
@@ -728,10 +745,7 @@ class _StatRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -743,7 +757,7 @@ class _SummaryItem extends StatelessWidget {
   final String value;
   final Color? textColor;
   final IconData? icon;
-  
+
   const _SummaryItem({
     required this.title,
     required this.value,
@@ -755,7 +769,7 @@ class _SummaryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = textColor ?? Colors.grey;
     final valueColor = textColor ?? Colors.black;
-    
+
     return Column(
       children: [
         if (icon != null) ...[
@@ -764,10 +778,7 @@ class _SummaryItem extends StatelessWidget {
         ],
         Text(
           title,
-          style: TextStyle(
-            fontSize: 12,
-            color: color,
-          ),
+          style: TextStyle(fontSize: 12, color: color),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 4),
@@ -789,7 +800,7 @@ class _ProductListItem extends StatelessWidget {
   final bool isResale;
   final VoidCallback? onTap;
   final VoidCallback? onRemoveResale;
-  
+
   const _ProductListItem({
     required this.product,
     this.isResale = false,
@@ -802,9 +813,7 @@ class _ProductListItem extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -835,9 +844,9 @@ class _ProductListItem extends StatelessWidget {
                       )
                     : null,
               ),
-              
+
               const SizedBox(width: 12),
-              
+
               // 상품 정보
               Expanded(
                 child: Column(
@@ -870,7 +879,10 @@ class _ProductListItem extends StatelessWidget {
                             isResale ? '대신팔기중' : product.status,
                             style: TextStyle(
                               fontSize: 11,
-                              color: _getStatusTextColor(product.status, isResale),
+                              color: _getStatusTextColor(
+                                product.status,
+                                isResale,
+                              ),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -883,7 +895,9 @@ class _ProductListItem extends StatelessWidget {
                                 context: context,
                                 builder: (context) => AlertDialog(
                                   title: const Text('대신팔기 제거'),
-                                  content: const Text('이 상품을 대신팔기 목록에서 제거하시겠습니까?'),
+                                  content: const Text(
+                                    '이 상품을 대신팔기 목록에서 제거하시겠습니까?',
+                                  ),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.pop(context),
@@ -919,9 +933,9 @@ class _ProductListItem extends StatelessWidget {
                         ],
                       ],
                     ),
-                    
+
                     const SizedBox(height: 4),
-                    
+
                     // 가격
                     Text(
                       '₩${product.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
@@ -931,25 +945,22 @@ class _ProductListItem extends StatelessWidget {
                         color: AppTheme.primaryColor,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 4),
-                    
+
                     // 설명 또는 원 판매자 정보
                     if (product.description?.isNotEmpty == true)
                       Text(
-                        isResale && product.sellerName != null 
+                        isResale && product.sellerName != null
                             ? '원 판매자: ${product.sellerName}님'
                             : product.description!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    
+
                     const SizedBox(height: 8),
-                    
+
                     // 통계 정보
                     Row(
                       children: [
@@ -963,7 +974,11 @@ class _ProductListItem extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: Colors.grey[600],
+                        ),
                         const SizedBox(width: 2),
                         Text(
                           _formatDate(product.createdAt),
@@ -973,7 +988,9 @@ class _ProductListItem extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        if (isResale && product.resaleEnabled && product.resaleFeePercentage != null)
+                        if (isResale &&
+                            product.resaleEnabled &&
+                            product.resaleFeePercentage != null)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 6,
@@ -1049,53 +1066,14 @@ class _ProductListItem extends StatelessWidget {
     }
   }
 }
+
 // 샵 앱바 위젯
-class _ShopAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final String shopName;
-  final VoidCallback onSharePressed;
-  final VoidCallback onEditPressed;
-
-  const _ShopAppBar({
-    required this.shopName,
-    required this.onSharePressed,
-    required this.onEditPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBar(
-      title: Text(shopName),
-      backgroundColor: Colors.white,
-      foregroundColor: Colors.black,
-      elevation: 0,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.edit),
-          onPressed: onEditPressed,
-          tooltip: '샵 정보 수정',
-        ),
-        IconButton(
-          icon: const Icon(Icons.share),
-          onPressed: onSharePressed,
-          tooltip: '샵 공유',
-        ),
-      ],
-    );
-  }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
-}
-
 // 샵 정보 수정 다이얼로그
 class _ShopEditDialog extends StatefulWidget {
   final ShopModel shop;
   final Function(String name, String description) onSave;
 
-  const _ShopEditDialog({
-    required this.shop,
-    required this.onSave,
-  });
+  const _ShopEditDialog({required this.shop, required this.onSave});
 
   @override
   State<_ShopEditDialog> createState() => _ShopEditDialogState();
@@ -1110,7 +1088,9 @@ class _ShopEditDialogState extends State<_ShopEditDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.shop.name);
-    _descriptionController = TextEditingController(text: widget.shop.description ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.shop.description ?? '',
+    );
   }
 
   @override

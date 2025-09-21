@@ -7,62 +7,64 @@ import '../../models/review_model.dart';
 import '../../models/transaction_model.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_app_bar.dart';
-import 'review_create_screen.dart';
+import '../../widgets/safe_network_image.dart';
 
 class TransactionReviewScreen extends StatefulWidget {
   final String transactionId;
 
-  const TransactionReviewScreen({
-    super.key,
-    required this.transactionId,
-  });
+  const TransactionReviewScreen({super.key, required this.transactionId});
 
   @override
-  State<TransactionReviewScreen> createState() => _TransactionReviewScreenState();
+  State<TransactionReviewScreen> createState() =>
+      _TransactionReviewScreenState();
 }
 
 class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
   final ReviewService _reviewService = ReviewService();
   final AuthService _authService = AuthService();
   final TransactionService _transactionService = TransactionService();
-  
+
   TransactionModel? _transaction;
   List<Map<String, dynamic>> _reviewableUsers = [];
   List<ReviewModel> _existingReviews = [];
   String? _currentUserId;
   bool _isLoading = true;
-  
+
   @override
   void initState() {
     super.initState();
     _loadData();
   }
-  
+
   Future<void> _loadData() async {
     try {
       setState(() => _isLoading = true);
-      
+
       // 현재 사용자 ID 가져오기
       final user = await _authService.getCurrentUser();
       _currentUserId = user?.id;
-      
+
       if (_currentUserId == null) {
         _showError('로그인이 필요합니다');
         return;
       }
-      
+
       // 거래 정보 로드
-      final transaction = await _transactionService.getTransactionById(widget.transactionId);
-      
+      final transaction = await _transactionService.getTransactionById(
+        widget.transactionId,
+      );
+
       // 리뷰 가능한 사용자 목록 로드
       final reviewableUsers = await _reviewService.getReviewableUsers(
         transactionId: widget.transactionId,
         currentUserId: _currentUserId!,
       );
-      
+
       // 기존 리뷰 목록 로드
-      final existingReviews = await _reviewService.getTransactionReviews(widget.transactionId);
-      
+      final existingReviews = await _reviewService.getTransactionReviews(
+        widget.transactionId,
+      );
+
       if (mounted) {
         setState(() {
           _transaction = transaction;
@@ -79,40 +81,40 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
       }
     }
   }
-  
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
-  
+
   void _showSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.green),
     );
   }
-  
-  Future<void> _navigateToCreateReview(Map<String, dynamic> reviewableUser) async {
+
+  Future<void> _navigateToCreateReview(
+    Map<String, dynamic> reviewableUser,
+  ) async {
     if (_transaction == null) return;
-    
-    final result = await Navigator.push<ReviewModel>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ReviewCreateScreen(
-          transaction: _transaction!,
-          reviewedUserId: reviewableUser['user_id'],
-          reviewedUserName: reviewableUser['name'],
-          isSellerReview: reviewableUser['role'] == '판매자',
-        ),
-      ),
+
+    final result = await context.push<ReviewModel>(
+      '/review/create',
+      extra: {
+        'transaction': _transaction!,
+        'reviewedUserId': reviewableUser['user_id'],
+        'reviewedUserName': reviewableUser['name'],
+        'isSellerReview': reviewableUser['role'] == '판매자',
+      },
     );
-    
+
     if (result != null) {
       _showSuccess('리뷰가 작성되었습니다');
       _loadData(); // 데이터 새로고침
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -132,25 +134,25 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
                 children: [
                   // 거래 정보
                   if (_transaction != null) _buildTransactionInfo(),
-                  
+
                   const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
-                  
+
                   // 리뷰 작성 가능한 사용자
                   if (_reviewableUsers.isNotEmpty) _buildReviewableUsers(),
-                  
+
                   // 기존 리뷰 목록
                   if (_existingReviews.isNotEmpty) ...[
                     const Divider(thickness: 8, color: Color(0xFFF5F5F5)),
                     _buildExistingReviews(),
                   ],
-                  
+
                   const SizedBox(height: 100),
                 ],
               ),
             ),
     );
   }
-  
+
   Widget _buildTransactionInfo() {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -160,9 +162,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
         children: [
           Text(
             '거래 정보',
-            style: AppStyles.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: AppSpacing.md),
           Row(
@@ -175,12 +175,10 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
                   color: Colors.grey[200],
                 ),
                 child: _transaction!.productImage != null
-                    ? ClipRRect(
+                    ? SafeNetworkImage(
+                        imageUrl: _transaction!.productImage!,
+                        fit: BoxFit.cover,
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          _transaction!.productImage!,
-                          fit: BoxFit.cover,
-                        ),
                       )
                     : const Icon(Icons.image, color: Colors.grey),
               ),
@@ -220,7 +218,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
       ),
     );
   }
-  
+
   Widget _buildReviewableUsers() {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -230,27 +228,25 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
         children: [
           Text(
             '리뷰 작성하기',
-            style: AppStyles.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '거래 상대방에게 후기를 남겨보세요',
-            style: AppStyles.bodySmall.copyWith(
-              color: Colors.grey[600],
-            ),
+            style: AppStyles.bodySmall.copyWith(color: Colors.grey[600]),
           ),
           const SizedBox(height: AppSpacing.md),
-          ..._reviewableUsers.map((user) => _buildReviewableUserItem(user)).toList(),
+          ..._reviewableUsers
+              .map((user) => _buildReviewableUserItem(user))
+              .toList(),
         ],
       ),
     );
   }
-  
+
   Widget _buildReviewableUserItem(Map<String, dynamic> user) {
     final alreadyReviewed = user['already_reviewed'] ?? false;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -290,9 +286,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
                 ),
                 Text(
                   user['role'],
-                  style: AppStyles.bodySmall.copyWith(
-                    color: Colors.grey[600],
-                  ),
+                  style: AppStyles.bodySmall.copyWith(color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -309,9 +303,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
               ),
               child: Text(
                 '작성완료',
-                style: AppStyles.bodySmall.copyWith(
-                  color: Colors.grey[700],
-                ),
+                style: AppStyles.bodySmall.copyWith(color: Colors.grey[700]),
               ),
             )
           else
@@ -326,16 +318,14 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
               ),
               child: Text(
                 '리뷰 작성',
-                style: AppStyles.bodySmall.copyWith(
-                  color: Colors.white,
-                ),
+                style: AppStyles.bodySmall.copyWith(color: Colors.white),
               ),
             ),
         ],
       ),
     );
   }
-  
+
   Widget _buildExistingReviews() {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -345,27 +335,29 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
         children: [
           Text(
             '작성된 리뷰 (${_existingReviews.length})',
-            style: AppStyles.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: AppSpacing.md),
-          ..._existingReviews.map((review) => _buildReviewItem(review)).toList(),
+          ..._existingReviews
+              .map((review) => _buildReviewItem(review))
+              .toList(),
         ],
       ),
     );
   }
-  
+
   Widget _buildReviewItem(ReviewModel review) {
     final isMyReview = review.reviewerId == _currentUserId;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey[300]!),
         borderRadius: BorderRadius.circular(8),
-        color: isMyReview ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
+        color: isMyReview
+            ? AppTheme.primaryColor.withOpacity(0.05)
+            : Colors.white,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -471,10 +463,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
-          Text(
-            review.comment,
-            style: AppStyles.bodySmall,
-          ),
+          Text(review.comment, style: AppStyles.bodySmall),
           const SizedBox(height: AppSpacing.xs),
           Text(
             review.formattedDate,
@@ -487,7 +476,7 @@ class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
       ),
     );
   }
-  
+
   String _formatDate(DateTime date) {
     return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
   }

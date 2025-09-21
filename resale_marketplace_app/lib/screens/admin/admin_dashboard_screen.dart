@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
 import '../../services/transaction_service.dart';
 import '../../services/product_service.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
-import 'user_management_screen.dart';
-import 'transaction_monitoring_screen.dart';
-import 'report_management_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -21,10 +19,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final UserService _userService = UserService();
   final TransactionService _transactionService = TransactionService();
   final ProductService _productService = ProductService();
-  
+
   UserModel? _currentUser;
   bool _isLoading = true;
-  
+
   // 통계 데이터
   int _totalUsers = 0;
   int _activeUsers = 0;
@@ -32,16 +30,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int _totalTransactions = 0;
   int _pendingReports = 0;
   double _totalRevenue = 0;
-  
+
   @override
   void initState() {
     super.initState();
     _checkAdminAccess();
   }
-  
+
   Future<void> _checkAdminAccess() async {
     final user = await _authService.getCurrentUser();
-    
+
     if (user == null || !user.isAdmin) {
       if (mounted) {
         Navigator.pop(context);
@@ -54,22 +52,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
       return;
     }
-    
+
     setState(() {
       _currentUser = user;
     });
-    
+
     await _loadStatistics();
   }
-  
+
   Future<void> _loadStatistics() async {
     try {
       setState(() => _isLoading = true);
-      
+
       // 통계 데이터 로드 (실제 구현 시 서비스 메소드 사용)
       // 여기서는 예시 데이터 사용
       await Future.delayed(const Duration(seconds: 1));
-      
+
       setState(() {
         _totalUsers = 1234;
         _activeUsers = 856;
@@ -84,19 +82,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       setState(() => _isLoading = false);
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     if (_currentUser == null || !_currentUser!.isAdmin) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('관리자 대시보드'),
@@ -120,15 +114,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     // 관리자 정보
                     _buildAdminInfo(theme),
                     const SizedBox(height: 24),
-                    
+
                     // 주요 통계
                     _buildStatisticsGrid(theme),
                     const SizedBox(height: 24),
-                    
+
                     // 빠른 액션
                     _buildQuickActions(theme),
                     const SizedBox(height: 24),
-                    
+
                     // 최근 활동
                     _buildRecentActivity(theme),
                   ],
@@ -137,7 +131,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
     );
   }
-  
+
   Widget _buildAdminInfo(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -184,12 +178,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),
-                Text(
-                  _currentUser!.email,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.white.withOpacity(0.8),
+                if (_currentUser!.email != null && _currentUser!.email!.isNotEmpty)
+                  Text(
+                    _currentUser!.email!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white.withOpacity(0.8),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -197,7 +192,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
-  
+
   Widget _buildStatisticsGrid(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,7 +260,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ],
     );
   }
-  
+
   Widget _buildStatCard(
     ThemeData theme,
     String title,
@@ -277,14 +272,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: highlight
-            ? color.withOpacity(0.1)
-            : theme.colorScheme.surface,
+        color: highlight ? color.withOpacity(0.1) : theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: highlight
-              ? color
-              : theme.colorScheme.outline.withOpacity(0.2),
+          color: highlight ? color : theme.colorScheme.outline.withOpacity(0.2),
           width: highlight ? 2 : 1,
         ),
       ),
@@ -295,11 +286,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(
-                icon,
-                color: color,
-                size: 24,
-              ),
+              Icon(icon, color: color, size: 24),
               if (highlight)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -342,7 +329,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
-  
+
   Widget _buildQuickActions(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,7 +391,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ],
     );
   }
-  
+
   Widget _buildActionButton(
     ThemeData theme,
     String label,
@@ -420,20 +407,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         decoration: BoxDecoration(
           color: theme.colorScheme.primaryContainer.withOpacity(0.2),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.2),
-          ),
+          border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
         ),
         child: Stack(
           children: [
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  size: 32,
-                  color: theme.colorScheme.primary,
-                ),
+                Icon(icon, size: 32, color: theme.colorScheme.primary),
                 const SizedBox(height: 8),
                 Text(
                   label,
@@ -472,7 +453,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
-  
+
   Widget _buildRecentActivity(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -522,7 +503,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ],
     );
   }
-  
+
   Widget _buildActivityItem(
     ThemeData theme,
     String title,
@@ -537,9 +518,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: Row(
         children: [
@@ -549,11 +528,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 20,
-            ),
+            child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -585,42 +560,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
     );
   }
-  
+
   void _navigateToUserManagement() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const UserManagementScreen(),
-      ),
-    );
+    context.push('/admin/users');
   }
-  
+
   void _navigateToTransactionMonitoring() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const TransactionMonitoringScreen(),
-      ),
-    );
+    context.push('/admin/transactions');
   }
-  
+
   void _navigateToReportManagement() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ReportManagementScreen(),
-      ),
-    );
+    context.push('/admin/reports');
   }
-  
+
   void _showComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('준비 중인 기능입니다'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('준비 중인 기능입니다')));
   }
-  
+
   String _formatCurrency(double amount) {
     if (amount >= 100000000) {
       return '${(amount / 100000000).toStringAsFixed(1)}억';

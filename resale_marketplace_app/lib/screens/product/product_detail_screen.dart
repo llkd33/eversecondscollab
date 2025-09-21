@@ -12,14 +12,12 @@ import '../../services/shop_service.dart';
 import '../../services/transaction_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/auth_guard.dart';
+import '../../widgets/safe_network_image.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
-  
-  const ProductDetailScreen({
-    super.key,
-    required this.productId,
-  });
+
+  const ProductDetailScreen({super.key, required this.productId});
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
@@ -31,7 +29,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final ShopService _shopService = ShopService();
   final TransactionService _transactionService = TransactionService();
   final PageController _pageController = PageController();
-  
+
   ProductModel? _product;
   UserModel? _currentUser;
   bool _isLoading = true;
@@ -56,7 +54,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         title: '상품 상세',
         showBackButton: true,
         actions: [
-          if (_product != null && _currentUser != null && _product!.sellerId == _currentUser!.id)
+          if (_product != null &&
+              _currentUser != null &&
+              _product!.sellerId == _currentUser!.id)
             PopupMenuButton<String>(
               onSelected: _handleMenuAction,
               itemBuilder: (context) => [
@@ -93,60 +93,53 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ],
             ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareProduct,
-          ),
+          IconButton(icon: const Icon(Icons.share), onPressed: _shareProduct),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _product == null
-              ? _buildErrorState()
-              : Column(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // 상품 이미지
-                            _buildImageSection(),
-                            
-                            // 상품 정보
-                            _buildProductInfo(),
-                            
-                            // 판매자 정보
-                            _buildSellerInfo(),
-                            
-                            // 상품 설명
-                            _buildProductDescription(),
-                          ],
-                        ),
-                      ),
+          ? _buildErrorState()
+          : Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 상품 이미지
+                        _buildImageSection(),
+
+                        // 상품 정보
+                        _buildProductInfo(),
+
+                        // 판매자 정보
+                        _buildSellerInfo(),
+
+                        // 상품 설명
+                        _buildProductDescription(),
+                      ],
                     ),
-                    
-                    // 하단 버튼
-                    _buildBottomButtons(),
-                  ],
+                  ),
                 ),
+
+                // 하단 버튼
+                _buildBottomButtons(),
+              ],
+            ),
     );
   }
 
   Widget _buildImageSection() {
     if (_product == null) return const SizedBox.shrink();
-    
+
     if (_product!.images.isEmpty) {
       return Container(
         height: 300,
         width: double.infinity,
         color: Colors.grey[300],
         child: const Center(
-          child: Icon(
-            Icons.image_outlined,
-            size: 100,
-            color: Colors.grey,
-          ),
+          child: Icon(Icons.image_outlined, size: 100, color: Colors.grey),
         ),
       );
     }
@@ -164,42 +157,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             },
             itemCount: _product!.images.length,
             itemBuilder: (context, index) {
-              return Image.network(
-                _product!.images[index],
+              return SafeNetworkImage(
+                imageUrl: _product!.images[index],
                 fit: BoxFit.cover,
-                width: double.infinity,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[300],
-                    child: const Center(
-                      child: Icon(
-                        Icons.broken_image,
-                        size: 50,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  );
-                },
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    color: Colors.grey[300],
-                    child: const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                },
+                borderRadius: BorderRadius.circular(0),
               );
             },
           ),
-          
+
           // 이미지 인디케이터
           if (_product!.images.length > 1)
             Positioned(
               bottom: 16,
               right: 16,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(16),
@@ -221,7 +196,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Widget _buildProductInfo() {
     if (_product == null) return const SizedBox.shrink();
-    
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -246,13 +221,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ),
             ),
-          
+
           Text(
             _product!.title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
@@ -266,13 +238,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(height: 4),
           Text(
             '카테고리: ${_product!.category}',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
-          
+
           // 대신팔기 정보
           if (_product!.resaleEnabled && _product!.status == '판매중')
             Container(
@@ -280,7 +249,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                ),
               ),
               child: Row(
                 children: [
@@ -307,7 +278,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       ],
                     ),
                   ),
-                  if (_currentUser != null && _currentUser!.id != _product!.sellerId)
+                  if (_currentUser != null &&
+                      _currentUser!.id != _product!.sellerId)
                     ElevatedButton(
                       onPressed: _handleResale,
                       style: ElevatedButton.styleFrom(
@@ -327,7 +299,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Widget _buildSellerInfo() {
     if (_product == null) return const SizedBox.shrink();
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -362,10 +334,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 const SizedBox(height: 4),
                 Text(
                   '등록일: ${_formatDate(_product!.createdAt)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -387,7 +356,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Widget _buildProductDescription() {
     if (_product == null) return const SizedBox.shrink();
-    
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -395,18 +364,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         children: [
           const Text(
             '상품 설명',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Text(
             _product!.description ?? '상품 설명이 없습니다.',
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.5,
-            ),
+            style: const TextStyle(fontSize: 14, height: 1.5),
           ),
         ],
       ),
@@ -414,8 +377,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _buildBottomButtons() {
-    if (_product == null || _currentUser == null) return const SizedBox.shrink();
-    
+    if (_product == null || _currentUser == null)
+      return const SizedBox.shrink();
+
     // 본인 상품인 경우
     if (_product!.sellerId == _currentUser!.id) {
       return Container(
@@ -438,9 +402,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 onPressed: () {
                   context.push('/product/edit/${_product!.id}');
                 },
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 50),
-                ),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 50)),
                 child: const Text('수정하기'),
               ),
             ),
@@ -449,22 +411,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               child: ElevatedButton(
                 onPressed: _product!.status == '판매완료' ? null : _markAsSold,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _product!.status == '판매완료' 
-                      ? Colors.grey 
+                  backgroundColor: _product!.status == '판매완료'
+                      ? Colors.grey
                       : Colors.red,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(0, 50),
                 ),
-                child: Text(
-                  _product!.status == '판매완료' ? '판매완료' : '거래완료',
-                ),
+                child: Text(_product!.status == '판매완료' ? '판매완료' : '거래완료'),
               ),
             ),
           ],
         ),
       );
     }
-    
+
     // 다른 사용자 상품인 경우
     return Container(
       padding: const EdgeInsets.all(16),
@@ -484,9 +444,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           Expanded(
             child: OutlinedButton(
               onPressed: _product!.status == '판매완료' ? null : _startChat,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 50),
-              ),
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 50)),
               child: const Text('채팅하기'),
             ),
           ),
@@ -495,15 +453,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: ElevatedButton(
               onPressed: _product!.status == '판매완료' ? null : _buyProduct,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _product!.status == '판매완료' 
-                    ? Colors.grey 
+                backgroundColor: _product!.status == '판매완료'
+                    ? Colors.grey
                     : AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(0, 50),
               ),
-              child: Text(
-                _product!.status == '판매완료' ? '판매완료' : '구매하기',
-              ),
+              child: Text(_product!.status == '판매완료' ? '판매완료' : '구매하기'),
             ),
           ),
         ],
@@ -516,11 +472,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 80,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.error_outline, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             '상품을 불러올 수 없습니다',
@@ -599,10 +551,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              '완료',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('완료', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -619,7 +568,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           setState(() {
             _product = _product!.copyWith(status: '판매완료');
           });
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -665,10 +614,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               Navigator.pop(context);
               _deleteProduct();
             },
-            child: const Text(
-              '삭제',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('삭제', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -699,10 +645,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('상품 삭제 실패: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('상품 삭제 실패: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -715,7 +658,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   // 대신팔기 처리
   Future<void> _handleResale() async {
     final authProvider = context.read<AuthProvider>();
-    
+
     if (!authProvider.isAuthenticated) {
       _showLoginDialog('대신팔기를 신청하려면 로그인이 필요합니다.');
       return;
@@ -760,10 +703,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('대신팔기 실패: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('대신팔기 실패: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -799,7 +739,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   Text('가격: ${_product!.formattedPrice}'),
-                  Text('수수료: ${_product!.formattedResaleFee} (${_product!.resaleFeePercentage?.toInt() ?? 0}%)'),
+                  Text(
+                    '수수료: ${_product!.formattedResaleFee} (${_product!.resaleFeePercentage?.toInt() ?? 0}%)',
+                  ),
                   Text('내 수익: ${_formatPrice(_product!.resaleFee)}'),
                 ],
               ),
@@ -816,10 +758,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
             ),
-            child: const Text(
-              '신청',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('신청', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -837,7 +776,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return '${_numberWithCommas(price)}원';
     }
   }
-  
+
   String _numberWithCommas(int number) {
     final formatter = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
     return number.toString().replaceAllMapped(
@@ -849,7 +788,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   // 채팅 시작
   Future<void> _startChat() async {
     final authProvider = context.read<AuthProvider>();
-    
+
     if (!authProvider.isAuthenticated) {
       _showLoginDialog('채팅을 시작하려면 로그인이 필요합니다.');
       return;
@@ -860,7 +799,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     try {
       // 채팅 서비스 import 필요
       final chatService = ChatService();
-      
+
       // 채팅방 생성 또는 기존 채팅방 찾기
       final chat = await chatService.createChat(
         participants: [_currentUser!.id, _product!.sellerId],
@@ -868,9 +807,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
 
       if (chat != null) {
-        // 채팅방으로 이동
+        // 채팅방으로 이동 (AppRouter '/chat_room' 경로 사용)
         if (mounted) {
-          context.push('/chat/room/${chat.id}');
+          context.push(
+            '/chat_room',
+            extra: {
+              'chatRoomId': chat.id,
+              'userName': _product?.sellerName ?? '',
+              'productTitle': _product?.title ?? '',
+            },
+          );
         }
       } else {
         throw Exception('채팅방 생성에 실패했습니다');
@@ -878,10 +824,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('채팅방 생성 실패: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('채팅방 생성 실패: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -890,7 +833,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   // 구매하기
   Future<void> _buyProduct() async {
     final authProvider = context.read<AuthProvider>();
-    
+
     if (!authProvider.isAuthenticated) {
       _showLoginDialog('구매하려면 로그인이 필요합니다.');
       return;
@@ -937,9 +880,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          
+
           // 채팅방으로 이동
-          context.push('/chat/room/${chat.id}');
+          context.push(
+            '/chat_room',
+            extra: {
+              'chatRoomId': chat.id,
+              'userName': _product?.sellerName ?? '',
+              'productTitle': _product?.title ?? '',
+            },
+          );
         }
       } else {
         throw Exception('거래 생성에 실패했습니다');
@@ -947,10 +897,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('구매 실패: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('구매 실패: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1007,10 +954,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
             ),
-            child: const Text(
-              '구매',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('구매', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1019,9 +963,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   // 상품 공유
   void _shareProduct() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('공유 기능 준비중입니다')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('공유 기능 준비중입니다')));
   }
 
   // 날짜 포맷팅
@@ -1039,7 +983,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return '방금 전';
     }
   }
-  
+
   // 로그인 다이얼로그 표시
   void _showLoginDialog(String message) {
     showDialog(
@@ -1062,10 +1006,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
               ),
-              child: const Text(
-                '로그인',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('로그인', style: TextStyle(color: Colors.white)),
             ),
           ],
         );

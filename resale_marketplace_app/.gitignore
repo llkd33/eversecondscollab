@@ -43,3 +43,41 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Local environment variables
+.env
+
+# Flutter specific
+.flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+.packages
+.metadata
+.flutter-plugins-dependencies
+
+# Android/Gradle specific
+.gradle/
+build/
+*.iml
+*.hprof
+.cxx/
+local.properties
+
+# iOS specific
+ios/Podfile.lock
+ios/Pods/
+ios/Runner.xcworkspace/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Build artifacts
+**/build/
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+
+# Large cache and build files
+.gradle/
+flutter_local/
+**/.dart_tool/
+**/.config/

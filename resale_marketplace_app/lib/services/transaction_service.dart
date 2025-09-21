@@ -4,6 +4,7 @@ import '../models/transaction_model.dart';
 import '../models/product_model.dart';
 import 'chat_service.dart';
 import 'product_service.dart';
+import '../utils/uuid.dart';
 
 class TransactionService {
   final SupabaseClient _client = SupabaseConfig.client;
@@ -22,6 +23,18 @@ class TransactionService {
     String transactionType = '일반거래',
   }) async {
     try {
+      // Validate UUID parameters to avoid 22P02
+      if (!UuidUtils.isValid(productId) ||
+          !UuidUtils.isValid(buyerId) ||
+          !UuidUtils.isValid(sellerId)) {
+        throw Exception('거래 생성에 필요한 식별자가 올바르지 않습니다.');
+      }
+      if (resellerId != null && !UuidUtils.isValid(resellerId)) {
+        resellerId = null;
+      }
+      if (chatId != null && !UuidUtils.isValid(chatId)) {
+        chatId = null;
+      }
       // 1. 거래 데이터 생성
       final response = await _client.from('transactions').insert({
         'product_id': productId,
@@ -74,6 +87,10 @@ class TransactionService {
   // 거래 ID로 조회
   Future<TransactionModel?> getTransactionById(String transactionId) async {
     try {
+      if (!UuidUtils.isValid(transactionId)) {
+        print('getTransactionById skipped: invalid UUID "$transactionId"');
+        return null;
+      }
       final response = await _client
           .from('transactions')
           .select('''

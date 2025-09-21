@@ -28,6 +28,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        manifestPlaceholders["supabaseScheme"] = "https"
+        manifestPlaceholders["supabaseHost"] =
+            (project.findProperty("SUPABASE_HOST") as String?)
+                ?: "ewhurbwdqiemeuwdtpeg.supabase.co"
+        manifestPlaceholders["supabasePathPrefix"] = "/auth/v1/callback"
     }
 
     buildTypes {

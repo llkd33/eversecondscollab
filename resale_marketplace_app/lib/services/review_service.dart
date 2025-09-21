@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/review_model.dart';
+import '../utils/uuid.dart';
 
 class ReviewService {
   final SupabaseClient _client = SupabaseConfig.client;
@@ -17,6 +18,11 @@ class ReviewService {
     List<String>? images,
   }) async {
     try {
+      if (!UuidUtils.isValid(reviewerId) ||
+          !UuidUtils.isValid(reviewedUserId) ||
+          !UuidUtils.isValid(transactionId)) {
+        throw Exception('리뷰 작성에 필요한 식별자가 올바르지 않습니다.');
+      }
       // 중복 리뷰 확인
       final existingReview = await _client
           .from('reviews')
@@ -50,6 +56,11 @@ class ReviewService {
   // 리뷰 ID로 조회
   Future<ReviewModel?> getReviewById(String reviewId) async {
     try {
+      // Avoid 22P02 on invalid ids
+      if (!UuidUtils.isValid(reviewId)) {
+        print('getReviewById skipped: invalid UUID "$reviewId"');
+        return null;
+      }
       final response = await _client
           .from('reviews')
           .select('''
@@ -172,6 +183,10 @@ class ReviewService {
   // 거래별 리뷰 조회
   Future<List<ReviewModel>> getTransactionReviews(String transactionId) async {
     try {
+      if (!UuidUtils.isValid(transactionId)) {
+        print('getTransactionReviews skipped: invalid UUID "$transactionId"');
+        return [];
+      }
       final response = await _client
           .from('reviews')
           .select('''

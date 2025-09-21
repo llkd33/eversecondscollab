@@ -2,7 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 
 class UserModel {
   final String id;
-  final String email;
+  final String? email; // 전화번호 기반 로그인을 위해 nullable로 변경
   final String name;
   final String phone;
   final bool isVerified;
@@ -14,7 +14,7 @@ class UserModel {
 
   UserModel({
     required this.id,
-    required this.email,
+    this.email, // nullable로 변경
     required this.name,
     required this.phone,
     this.isVerified = false,
@@ -30,10 +30,11 @@ class UserModel {
   // 데이터 검증 로직
   void _validate() {
     if (id.isEmpty) throw ArgumentError('User ID cannot be empty');
-    if (email.isEmpty) throw ArgumentError('Email cannot be empty');
     if (name.isEmpty) throw ArgumentError('Name cannot be empty');
-    if (phone.isEmpty) throw ArgumentError('Phone cannot be empty');
-    if (!_isValidEmail(email)) throw ArgumentError('Invalid email format');
+    // 이메일이 있으면 검증, 없으면 전화번호 기반 로그인으로 간주
+    if (email != null && email!.isNotEmpty && !_isValidEmail(email!)) {
+      throw ArgumentError('Invalid email format');
+    }
     if (!_isValidPhone(phone)) throw ArgumentError('Invalid phone format');
     if (!UserRole.isValid(role)) throw ArgumentError('Invalid user role');
   }
@@ -45,6 +46,8 @@ class UserModel {
 
   // 전화번호 형식 검증 (한국 전화번호)
   bool _isValidPhone(String phone) {
+    // 소셜 로그인(카카오 등) 사용자는 전화번호가 비어있을 수 있으므로 허용
+    if (phone.isEmpty) return true;
     return RegExp(r'^01[0-9]-?[0-9]{4}-?[0-9]{4}$').hasMatch(phone);
   }
 
@@ -68,7 +71,7 @@ class UserModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'email': email,
+      'email': email, // nullable 값 그대로 전달
       'name': name,
       'phone': phone,
       'is_verified': isVerified,

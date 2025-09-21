@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/product_model.dart';
+import '../utils/uuid.dart';
 
 class ProductService {
   final SupabaseClient _client = SupabaseConfig.client;
@@ -21,31 +22,55 @@ class ProductService {
     try {
       // 수수료 계산 (퍼센티지가 있으면 자동 계산)
       int calculatedResaleFee = resaleFee ?? 0;
-      if (resaleEnabled && resaleFeePercentage != null && resaleFeePercentage > 0) {
+      if (resaleEnabled &&
+          resaleFeePercentage != null &&
+          resaleFeePercentage > 0) {
         calculatedResaleFee = (price * resaleFeePercentage / 100).round();
       }
-      
+
       // 수수료가 상품 가격보다 클 수 없음
       if (calculatedResaleFee > price) {
         calculatedResaleFee = price;
       }
 
-      final response = await _client.from('products').insert({
-        'title': title,
-        'price': price,
-        'description': description,
-        'images': images ?? [],
-        'category': category,
-        'seller_id': sellerId,
-        'resale_enabled': resaleEnabled,
-        'resale_fee': calculatedResaleFee,
-        'resale_fee_percentage': resaleFeePercentage ?? 0,
-        'status': '판매중',
-      }).select().single();
+      print('Creating product with data:');
+      print('- title: $title');
+      print('- price: $price');
+      print('- category: $category');
+      print('- sellerId: $sellerId');
+      print('- resaleEnabled: $resaleEnabled');
+      print('- calculatedResaleFee: $calculatedResaleFee');
+      print('- resaleFeePercentage: $resaleFeePercentage');
 
+      final response = await _client
+          .from('products')
+          .insert({
+            'title': title,
+            'price': price,
+            'description': description,
+            'images': images ?? [],
+            'category': category,
+            'seller_id': sellerId,
+            'resale_enabled': resaleEnabled,
+            'resale_fee': calculatedResaleFee,
+            'resale_fee_percentage': resaleFeePercentage ?? 0,
+            'status': '판매중',
+          })
+          .select()
+          .single();
+
+      print('Product created successfully: ${response['id']}');
       return ProductModel.fromJson(response);
     } catch (e) {
       print('Error creating product: $e');
+      print('Error details: ${e.toString()}');
+      if (e is PostgrestException) {
+        print('PostgrestException details:');
+        print('- code: ${e.code}');
+        print('- message: ${e.message}');
+        print('- details: ${e.details}');
+        print('- hint: ${e.hint}');
+      }
       rethrow;
     }
   }
@@ -53,6 +78,11 @@ class ProductService {
   // 상품 ID로 조회
   Future<ProductModel?> getProductById(String productId) async {
     try {
+      // Guard invalid UUIDs to prevent Postgres 22P02
+      if (!UuidUtils.isValid(productId)) {
+        print('getProductById skipped: invalid UUID "$productId"');
+        return null;
+      }
       final response = await _client
           .from('products')
           .select('*, users!seller_id(name, profile_image)')
@@ -86,10 +116,13 @@ class ProductService {
       // 필터 적용
       if (category != null) query = query.eq('category', category);
       if (status != null) query = query.eq('status', status);
-      if (resaleEnabled != null) query = query.eq('resale_enabled', resaleEnabled);
+      if (resaleEnabled != null)
+        query = query.eq('resale_enabled', resaleEnabled);
       if (sellerId != null) query = query.eq('seller_id', sellerId);
       if (searchQuery != null && searchQuery.isNotEmpty) {
-        query = query.or('title.ilike.%$searchQuery%,description.ilike.%$searchQuery%');
+        query = query.or(
+          'title.ilike.%$searchQuery%,description.ilike.%$searchQuery%',
+        );
       }
 
       // 정렬 및 페이징
@@ -113,10 +146,7 @@ class ProductService {
 
   // 대신팔기 가능한 상품 목록 조회
   Future<List<ProductModel>> getResaleProducts() async {
-    return getProducts(
-      resaleEnabled: true,
-      status: '판매중',
-    );
+    return getProducts(resaleEnabled: true, status: '판매중');
   }
 
   // 대신팔기 가능한 상품 목록 조회 (필터링 포함)
@@ -140,19 +170,21 @@ class ProductService {
       if (category != null && category != '전체') {
         query = query.eq('category', category);
       }
-      
+
       if (searchQuery != null && searchQuery.isNotEmpty) {
-        query = query.or('title.ilike.%$searchQuery%,description.ilike.%$searchQuery%');
+        query = query.or(
+          'title.ilike.%$searchQuery%,description.ilike.%$searchQuery%',
+        );
       }
-      
+
       if (minPrice != null) {
         query = query.gte('price', minPrice);
       }
-      
+
       if (maxPrice != null) {
         query = query.lte('price', maxPrice);
       }
-      
+
       if (minCommissionRate != null) {
         query = query.gte('resale_fee_percentage', minCommissionRate);
       }
@@ -183,6 +215,10 @@ class ProductService {
     String? status,
   }) async {
     try {
+      if (!UuidUtils.isValid(productId)) {
+        print('updateProduct skipped: invalid UUID "$productId"');
+        return false;
+      }
       final updates = <String, dynamic>{};
       if (title != null) updates['title'] = title;
       if (price != null) updates['price'] = price;
@@ -199,10 +235,7 @@ class ProductService {
       }
       if (status != null) updates['status'] = status;
 
-      await _client
-          .from('products')
-          .update(updates)
-          .eq('id', productId);
+      await _client.from('products').update(updates).eq('id', productId);
 
       return true;
     } catch (e) {
@@ -219,10 +252,11 @@ class ProductService {
   // 상품 삭제
   Future<bool> deleteProduct(String productId) async {
     try {
-      await _client
-          .from('products')
-          .delete()
-          .eq('id', productId);
+      if (!UuidUtils.isValid(productId)) {
+        print('deleteProduct skipped: invalid UUID "$productId"');
+        return false;
+      }
+      await _client.from('products').delete().eq('id', productId);
 
       return true;
     } catch (e) {
@@ -289,7 +323,7 @@ class ProductService {
       if (category != null && category.isNotEmpty) {
         supabaseQuery = supabaseQuery.eq('category', category);
       }
-      
+
       // 가격 필터
       if (minPrice != null) {
         supabaseQuery = supabaseQuery.gte('price', minPrice);
@@ -300,13 +334,15 @@ class ProductService {
 
       // 검색어 필터 (제목 또는 설명에서 검색)
       if (query.isNotEmpty) {
-        supabaseQuery = supabaseQuery.or('title.ilike.%$query%,description.ilike.%$query%');
+        supabaseQuery = supabaseQuery.or(
+          'title.ilike.%$query%,description.ilike.%$query%',
+        );
       }
-      
+
       // 정렬 설정 및 범위 지정
       String orderColumn = 'created_at';
       bool ascending = false;
-      
+
       if (sortBy != null) {
         switch (sortBy) {
           case 'price_low':
@@ -377,9 +413,7 @@ class ProductService {
           .from('product-images')
           .uploadBinary(fileName, bytes);
 
-      final url = _client.storage
-          .from('product-images')
-          .getPublicUrl(fileName);
+      final url = _client.storage.from('product-images').getPublicUrl(fileName);
 
       return url;
     } catch (e) {
@@ -395,38 +429,39 @@ class ProductService {
   ) async {
     final uploadedUrls = <String>[];
     final uploadedFileNames = <String>[];
-    
+
     try {
       for (int i = 0; i < imageFiles.length; i++) {
         final file = imageFiles[i];
         final extension = file.path.split('.').last.toLowerCase();
         final validExtensions = ['jpg', 'jpeg', 'png', 'webp'];
-        
+
         if (!validExtensions.contains(extension)) {
           throw Exception('지원하지 않는 이미지 형식입니다: $extension');
         }
-        
-        final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.$extension';
-        
+
+        final fileName =
+            '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.$extension';
+
         final bytes = await file.readAsBytes();
-        
+
         // 파일 크기 체크 (10MB 제한)
         if (bytes.length > 10 * 1024 * 1024) {
           throw Exception('이미지 파일 크기가 너무 큽니다 (최대 10MB)');
         }
-        
+
         await _client.storage
             .from('product-images')
             .uploadBinary(fileName, bytes);
-        
+
         final url = _client.storage
             .from('product-images')
             .getPublicUrl(fileName);
-        
+
         uploadedUrls.add(url);
         uploadedFileNames.add(fileName);
       }
-      
+
       return uploadedUrls;
     } catch (e) {
       print('Error uploading product images: $e');
@@ -441,9 +476,7 @@ class ProductService {
   // 상품 이미지 삭제
   Future<bool> deleteProductImage(String fileName) async {
     try {
-      await _client.storage
-          .from('product-images')
-          .remove([fileName]);
+      await _client.storage.from('product-images').remove([fileName]);
 
       return true;
     } catch (e) {

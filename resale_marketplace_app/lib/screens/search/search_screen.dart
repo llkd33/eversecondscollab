@@ -19,7 +19,7 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
   final TextEditingController _searchController = TextEditingController();
   final SearchService _searchService = SearchService();
   
-  List<Product> _searchResults = [];
+  List<ProductModel> _searchResults = [];
   List<String> _popularSearchTerms = [];
   List<String> _recentSearchTerms = [];
   List<String> _categories = [];

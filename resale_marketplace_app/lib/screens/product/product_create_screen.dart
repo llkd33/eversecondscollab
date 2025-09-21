@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_app_bar.dart';
+import '../../utils/responsive.dart';
 
 import '../../services/product_service.dart';
 import '../../services/user_service.dart';
@@ -99,17 +100,17 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                   const Divider(height: 1),
                   
                   // 기본 정보 입력
-                  Padding(
-                    padding: const EdgeInsets.all(16),
+                  Responsive.responsiveContainer(
+                    context: context,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildTitleField(),
-                        const SizedBox(height: 20),
+                        SizedBox(height: context.isMobile ? 20 : 24),
                         _buildCategorySelector(),
-                        const SizedBox(height: 20),
+                        SizedBox(height: context.isMobile ? 20 : 24),
                         _buildPriceField(),
-                        const SizedBox(height: 20),
+                        SizedBox(height: context.isMobile ? 20 : 24),
                         _buildDescriptionField(),
                       ],
                     ),
@@ -175,13 +176,13 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 16, top: 16, right: 16, bottom: 8),
+            padding: context.responsivePadding,
             child: Row(
               children: [
-                const Text(
+                Text(
                   '상품 이미지',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: Responsive.responsiveFontSize(context, 14),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -195,7 +196,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                   child: Text(
                     '선택',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: Responsive.responsiveFontSize(context, 11),
                       color: Colors.grey[600],
                     ),
                   ),
@@ -204,17 +205,21 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
             ),
           ),
           SizedBox(
-            height: 104,
+            height: context.isMobile ? 104 : 130,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+              padding: EdgeInsets.only(
+                left: context.responsivePadding.left,
+                right: context.responsivePadding.right,
+                bottom: 16,
+              ),
               children: [
                 // 이미지 추가 버튼
                 GestureDetector(
                   onTap: _pickImages,
                   child: Container(
-                    width: 88,
-                    height: 88,
+                    width: context.isMobile ? 88 : 110,
+                    height: context.isMobile ? 88 : 110,
                     decoration: BoxDecoration(
                       color: const Color(0xFFF5F5F5),
                       borderRadius: BorderRadius.circular(8),
@@ -224,14 +229,14 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.camera_alt_outlined, 
-                          size: 28, 
+                          size: context.isMobile ? 28 : 32, 
                           color: Colors.grey[600]
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: context.isMobile ? 4 : 6),
                         Text(
                           '${_imageFiles.length}/10',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: Responsive.responsiveFontSize(context, 13),
                             color: Colors.grey[600],
                           ),
                         ),
@@ -244,16 +249,17 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
           ..._imageFiles.asMap().entries.map((entry) {
             final index = entry.key;
             final file = entry.value;
+            final imageSize = context.isMobile ? 88.0 : 110.0;
             
             return Padding(
-              padding: const EdgeInsets.only(left: 12),
+              padding: EdgeInsets.only(left: context.isMobile ? 12 : 16),
               child: Stack(
                 children: [
                   GestureDetector(
                     onTap: () => _moveImageToFirst(index),
                     child: Container(
-                      width: 88,
-                      height: 88,
+                      width: imageSize,
+                      height: imageSize,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
                         image: DecorationImage(
@@ -332,7 +338,9 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         border: InputBorder.none,
         counterText: '',
       ),
-      style: const TextStyle(fontSize: 16),
+      style: TextStyle(
+        fontSize: Responsive.responsiveFontSize(context, 16),
+      ),
       validator: (value) {
         if (value == null || value.isEmpty) {
           return '상품명을 입력해주세요';
@@ -349,7 +357,9 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
     return InkWell(
       onTap: _showCategoryPicker,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: EdgeInsets.symmetric(
+          vertical: context.isMobile ? 12 : 16,
+        ),
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(color: Colors.grey[300]!),
@@ -361,7 +371,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
             Text(
               '카테고리',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: Responsive.responsiveFontSize(context, 16),
                 color: Colors.grey[700],
               ),
             ),
@@ -369,11 +379,13 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
               children: [
                 Text(
                   _selectedCategory,
-                  style: const TextStyle(fontSize: 16),
+                  style: TextStyle(
+                    fontSize: Responsive.responsiveFontSize(context, 16),
+                  ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: context.isMobile ? 8 : 12),
                 Icon(Icons.arrow_forward_ios, 
-                  size: 16, 
+                  size: context.isMobile ? 16 : 18, 
                   color: Colors.grey[400]
                 ),
               ],
@@ -397,16 +409,18 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
         suffixText: '원',
         border: InputBorder.none,
         suffixStyle: TextStyle(
-          fontSize: 16,
+          fontSize: Responsive.responsiveFontSize(context, 16),
           color: Colors.grey[700],
         ),
         helperText: '최소 100원 이상, 최대 1억원 이하',
         helperStyle: TextStyle(
-          fontSize: 12,
+          fontSize: Responsive.responsiveFontSize(context, 12),
           color: Colors.grey[600],
         ),
       ),
-      style: const TextStyle(fontSize: 16),
+      style: TextStyle(
+        fontSize: Responsive.responsiveFontSize(context, 16),
+      ),
       onChanged: (value) {
         if (_resaleEnabled) {
           _updateResaleFee();
@@ -437,14 +451,19 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
       children: [
         TextFormField(
           controller: _descriptionController,
-          maxLines: 5,
+          maxLines: context.isMobile ? 5 : 6,
           maxLength: 500,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: '상품 설명을 입력해주세요.\n\n브랜드, 모델명, 구매시기, 사용감 등을 작성하면 판매가 더 쉬워요.',
             border: InputBorder.none,
-            counterStyle: TextStyle(fontSize: 12),
+            counterStyle: TextStyle(
+              fontSize: Responsive.responsiveFontSize(context, 12),
+            ),
           ),
-          style: const TextStyle(fontSize: 16, height: 1.4),
+          style: TextStyle(
+            fontSize: Responsive.responsiveFontSize(context, 16),
+            height: 1.4,
+          ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return '상품 설명을 입력해주세요';
@@ -952,11 +971,7 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
       return;
     }
     
-    // 이미지 필수 검증 (최소 1장)
-    if (_imageFiles.isEmpty) {
-      _showErrorMessage('상품 이미지를 최소 1장 이상 등록해주세요');
-      return;
-    }
+    // 이미지 선택은 선택 사항(없어도 등록 가능)
     
     // 대신팔기 설정 검증
     if (_resaleEnabled) {
