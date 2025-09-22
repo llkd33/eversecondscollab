@@ -4,12 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 import 'package:app_links/app_links.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'config/kakao_config.dart';
 import 'utils/app_router.dart';
 import 'theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/product_provider.dart';
+import 'providers/realtime_provider.dart';
+import 'services/push_notification_service.dart';
 import 'widgets/session_monitor.dart';
 
 void main() async {
@@ -23,6 +27,11 @@ void main() async {
     ]);
   }
 
+  // Firebase 백그라운드 메시지 핸들러 설정 (앱이 완전히 종료된 상태에서 메시지 수신)
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
   // Supabase 초기화
   await SupabaseConfig.initialize();
   
@@ -31,15 +40,79 @@ void main() async {
     final appLinks = AppLinks();
     
     // 앱이 실행 중일 때 딥링크 처리
-    appLinks.uriLinkStream.listen((uri) {
+    appLinks.uriLinkStream.listen((uri) async {
       print('🔗 딥링크 수신: $uri');
-      // Supabase가 자동으로 처리합니다
+      print('  - Scheme: ${uri.scheme}');
+      print('  - Host: ${uri.host}');
+      print('  - Path: ${uri.path}');
+      print('  - Query: ${uri.query}');
+      print('  - Fragment: ${uri.fragment}');
+      final hasOAuthParams =
+          uri.queryParameters.containsKey('code') ||
+          uri.fragment.contains('access_token') ||
+          uri.fragment.contains('error_description');
+
+      if (uri.scheme == 'resale.marketplace.app' &&
+          uri.host == 'auth-callback' &&
+          hasOAuthParams) {
+        print('🔐 OAuth 콜백 감지');
+
+        try {
+          await SupabaseConfig.client.auth.getSessionFromUrl(uri);
+          final newSession = SupabaseConfig.client.auth.currentSession;
+
+          if (newSession != null) {
+            print('✅ OAuth 세션 설정 완료: ${newSession.user?.id}');
+            print('  - Email: ${newSession.user?.email}');
+            print(
+              '  - Provider: ${newSession.user?.appMetadata['provider']}',
+            );
+          } else {
+            print('⚠️ OAuth 콜백 처리 후에도 세션이 비어있습니다.');
+          }
+        } on AuthException catch (e) {
+          print('❌ OAuth 세션 처리 실패(AuthException): ${e.message}');
+        } catch (e, stackTrace) {
+          print('❌ OAuth 세션 처리 중 예기치 않은 오류: $e');
+          print('  - Stack trace: $stackTrace');
+        }
+      }
     });
     
     // 앱이 종료된 상태에서 딥링크로 시작될 때
     final initialUri = await appLinks.getInitialLink();
     if (initialUri != null) {
       print('🔗 초기 딥링크: $initialUri');
+      print('  - Scheme: ${initialUri.scheme}');
+      print('  - Host: ${initialUri.host}');
+      print('  - Fragment: ${initialUri.fragment}');
+      
+      final hasOAuthParams =
+          initialUri.queryParameters.containsKey('code') ||
+          initialUri.fragment.contains('access_token') ||
+          initialUri.fragment.contains('error_description');
+
+      if (initialUri.scheme == 'resale.marketplace.app' &&
+          initialUri.host == 'auth-callback' &&
+          hasOAuthParams) {
+        print('🔐 초기 OAuth 콜백 감지');
+
+        try {
+          await SupabaseConfig.client.auth.getSessionFromUrl(initialUri);
+          final session = SupabaseConfig.client.auth.currentSession;
+
+          if (session != null) {
+            print('✅ 초기 OAuth 세션 설정 완료: ${session.user?.id}');
+          } else {
+            print('⚠️ 초기 OAuth 세션 설정 실패');
+          }
+        } on AuthException catch (e) {
+          print('❌ 초기 OAuth 처리 실패(AuthException): ${e.message}');
+        } catch (e, stackTrace) {
+          print('❌ 초기 OAuth 처리 중 예기치 않은 오류: $e');
+          print('  - Stack trace: $stackTrace');
+        }
+      }
     }
   }
 
@@ -102,6 +175,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
+        ChangeNotifierProvider(create: (_) => RealtimeProvider()),
       ],
       child: Builder(
         builder: (context) {
