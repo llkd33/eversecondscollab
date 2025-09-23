@@ -286,6 +286,11 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _maybeRedirectAfterLogin(AuthProvider authProvider) {
     if (_hasNavigatedAfterSignIn) return;
+    
+    print('🔍 Checking auth status for redirect...');
+    print('  - Is authenticated: ${authProvider.isAuthenticated}');
+    print('  - Current user: ${authProvider.currentUser?.name ?? "없음"}');
+    
     if (!authProvider.isAuthenticated || authProvider.currentUser == null) {
       return;
     }
@@ -296,6 +301,8 @@ class _LoginScreenState extends State<LoginScreen>
         ? widget.redirectPath!
         : '/';
 
+    print('✅ Redirecting to: $target');
+    
     Future.microtask(() {
       if (!mounted) return;
       context.go(target);
@@ -368,6 +375,10 @@ class _LoginScreenState extends State<LoginScreen>
       return '로그인이 취소되었습니다.';
     } else if (error.contains('카카오 인증에 실패했습니다')) {
       return '카카오 인증에 실패했습니다. 다시 시도해주세요.';
+    } else if (error.contains('Database error') || error.contains('프로필 생성')) {
+      return '계정 설정 중 오류가 발생했습니다. 다시 시도해주세요.';
+    } else if (error.contains('server_error')) {
+      return '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
     }
     return '카카오 로그인 중 오류가 발생했습니다.';
   }
@@ -469,11 +480,15 @@ class _LoginButton extends StatelessWidget {
                 children: [
                   icon,
                   const SizedBox(width: 12),
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ],
@@ -495,11 +510,15 @@ class _LoginButton extends StatelessWidget {
                 children: [
                   icon,
                   const SizedBox(width: 12),
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ],

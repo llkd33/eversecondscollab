@@ -509,10 +509,27 @@ class _MenuSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.read<AuthProvider>();
+    final currentUser = authProvider.currentUser;
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
+          // 관리자 메뉴 - 관리자 권한이 있는 경우에만 표시
+          if (currentUser?.role == '관리자')
+            _MenuItem(
+              icon: Icons.admin_panel_settings,
+              title: '관리자 패널',
+              onTap: () {
+                // 화면 크기에 따라 웹 또는 모바일 관리자 패널로 라우팅
+                final screenWidth = MediaQuery.of(context).size.width;
+                if (screenWidth > 1024) {
+                  context.push('/admin/web');
+                } else {
+                  context.push('/admin');
+                }
+              },
+            ),
           _MenuItem(
             icon: Icons.inventory_2,
             title: '내 상품 관리',

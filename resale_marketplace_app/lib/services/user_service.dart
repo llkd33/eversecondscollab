@@ -10,6 +10,14 @@ import 'shop_service.dart';
 class UserService {
   final SupabaseClient _client = SupabaseConfig.client;
 
+  bool _isMissingShopRelationship(PostgrestException error) {
+    if (error.code == 'PGRST200') return true;
+    final message = error.message;
+    if (message is String && message.contains('PGRST200')) return true;
+    if (message != null && message.toString().contains('PGRST200')) return true;
+    return false;
+  }
+
   // 현재 로그인한 사용자 정보 가져오기
   Future<UserModel?> getCurrentUser() async {
     if (TestSession.enabled) {
@@ -20,11 +28,30 @@ class UserService {
       final authUser = _client.auth.currentUser;
       if (authUser == null) return null;
 
-      final response = await _client
-          .from('users')
-          .select('*, shops!shops_owner_id_fkey(*)')
-          .eq('id', authUser.id)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeShop) {
+        final selectClause = includeShop
+            ? '*, shops!shops_owner_id_fkey(*)'
+            : '*';
+        return _client
+            .from('users')
+            .select(selectClause)
+            .eq('id', authUser.id)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingShopRelationship(e)) {
+          print(
+            'Missing users -> shops relationship, retrying getCurrentUser without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (response != null) {
         return UserModel.fromJson(response);
@@ -42,11 +69,30 @@ class UserService {
   // 사용자 ID로 정보 가져오기
   Future<UserModel?> getUserById(String userId) async {
     try {
-      final response = await _client
-          .from('users')
-          .select('*, shops!shops_owner_id_fkey(*)')
-          .eq('id', userId)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeShop) {
+        final selectClause = includeShop
+            ? '*, shops!shops_owner_id_fkey(*)'
+            : '*';
+        return _client
+            .from('users')
+            .select(selectClause)
+            .eq('id', userId)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingShopRelationship(e)) {
+          print(
+            'Missing users -> shops relationship, retrying getUserById without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (response == null) return null;
       return UserModel.fromJson(response);
@@ -69,11 +115,30 @@ class UserService {
 
       final filter = variants.map((p) => 'phone.eq.$p').join(',');
 
-      final response = await _client
-          .from('users')
-          .select('*, shops!shops_owner_id_fkey(*)')
-          .or(filter)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeShop) {
+        final selectClause = includeShop
+            ? '*, shops!shops_owner_id_fkey(*)'
+            : '*';
+        return _client
+            .from('users')
+            .select(selectClause)
+            .or(filter)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingShopRelationship(e)) {
+          print(
+            'Missing users -> shops relationship, retrying getUserByPhone without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (response == null) return null;
       return UserModel.fromJson(response);
@@ -267,20 +332,38 @@ class UserService {
     String? role,
   }) async {
     try {
-      var query = _client
-          .from('users')
-          .select('*, shops!shops_owner_id_fkey(*)');
+      Future<List<dynamic>> runQuery(bool includeShop) async {
+        var query = _client
+            .from('users')
+            .select(includeShop ? '*, shops!shops_owner_id_fkey(*)' : '*');
 
-      if (role != null) {
-        query = query.eq('role', role);
+        if (role != null) {
+          query = query.eq('role', role);
+        }
+
+        final response = await query
+            .order('created_at', ascending: false)
+            .range(offset, offset + limit - 1);
+
+        if (response is List) return response;
+        return [];
       }
 
-      final response = await query
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
-      return (response as List)
-          .map((user) => UserModel.fromJson(user))
-          .toList();
+      List<dynamic> response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingShopRelationship(e)) {
+          print(
+            'Missing users -> shops relationship, retrying getAllUsers without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
+
+      return response.map((user) => UserModel.fromJson(user)).toList();
     } catch (e) {
       print('Error getting all users: $e');
       return [];
@@ -368,11 +451,30 @@ class UserService {
         print('Error syncing auth user to users table: $e');
       }
 
-      final retry = await _client
-          .from('users')
-          .select('*, shops!shops_owner_id_fkey(*)')
-          .eq('id', authUser.id)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeShop) {
+        final selectClause = includeShop
+            ? '*, shops!shops_owner_id_fkey(*)'
+            : '*';
+        return _client
+            .from('users')
+            .select(selectClause)
+            .eq('id', authUser.id)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? retry;
+      try {
+        retry = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingShopRelationship(e)) {
+          print(
+            'Missing users -> shops relationship, retrying auth sync lookup without join',
+          );
+          retry = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (retry != null) {
         return UserModel.fromJson(retry);

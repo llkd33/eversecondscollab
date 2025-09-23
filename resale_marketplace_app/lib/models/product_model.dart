@@ -45,7 +45,7 @@ class ProductModel {
     if (price <= 0) throw ArgumentError('Product price must be positive');
     if (price > 100000000) throw ArgumentError('Product price too high (max 100,000,000)');
     if (sellerId.isEmpty) throw ArgumentError('Seller ID cannot be empty');
-    if (!ProductCategory.all.contains(category)) throw ArgumentError('Invalid product category');
+    if (!ProductCategory.isValid(category)) throw ArgumentError('Invalid product category');
     if (!ProductStatus.isValid(status)) throw ArgumentError('Invalid product status');
     if (resaleFee < 0) throw ArgumentError('Resale fee cannot be negative');
     if (resaleFeePercentage != null && (resaleFeePercentage! < 0 || resaleFeePercentage! > 100)) {
@@ -69,7 +69,7 @@ class ProductModel {
       images: json['images'] != null 
           ? List<String>.from(json['images'])
           : [],
-      category: json['category'],
+      category: ProductCategory.normalize(json['category'] as String?),
       sellerId: json['seller_id'],
       resaleEnabled: json['resale_enabled'] ?? false,
       resaleFee: json['resale_fee'] ?? 0,
@@ -186,6 +186,27 @@ class ProductCategory {
     pet,
     etc,
   ];
+
+  static const Map<String, String> _aliasMap = {
+    '전체': etc,
+    'all': etc,
+  };
+
+  static String normalize(String? rawCategory) {
+    if (rawCategory == null) return etc;
+
+    final trimmed = rawCategory.trim();
+    if (trimmed.isEmpty) return etc;
+    if (all.contains(trimmed)) return trimmed;
+
+    final lower = trimmed.toLowerCase();
+    final alias = _aliasMap[trimmed] ?? _aliasMap[lower];
+    if (alias != null) return alias;
+
+    return etc;
+  }
+
+  static bool isValid(String category) => all.contains(category);
 }
 
 // 상품 상태 enum

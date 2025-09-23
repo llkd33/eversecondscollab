@@ -57,6 +57,28 @@ void main() {
       expect(product.sellerProfileImage, 'https://example.com/profile.jpg');
     });
 
+    test('ProductModel fromJson normalizes unknown categories', () {
+      final now = DateTime.now().toIso8601String();
+      final json = {
+        'id': 'test-id-2',
+        'title': 'Product With Unknown Category',
+        'price': 20000,
+        'images': [],
+        'category': '새로운카테고리',
+        'seller_id': 'seller-id',
+        'resale_enabled': false,
+        'resale_fee': 0,
+        'resale_fee_percentage': 0,
+        'status': '판매중',
+        'created_at': now,
+        'updated_at': now,
+      };
+
+      final product = ProductModel.fromJson(json);
+
+      expect(product.category, ProductCategory.etc);
+    });
+
     test('ProductModel validation errors', () {
       expect(() => ProductModel(
         id: '',

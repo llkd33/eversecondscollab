@@ -3,11 +3,30 @@ import 'package:go_router/go_router.dart';
 import '../../services/transaction_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/transaction_model.dart';
+import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/safe_network_image.dart';
 
 class TransactionListScreen extends StatefulWidget {
-  const TransactionListScreen({super.key});
+  final UserModel? initialUser;
+  final List<TransactionModel>? initialTransactions;
+  final Future<UserModel?> Function()? userLoaderOverride;
+  final Future<List<TransactionModel>> Function({
+    required String userId,
+    String? status,
+    String? role,
+  })?
+  transactionLoaderOverride;
+  final bool deferInitialLoad;
+
+  const TransactionListScreen({
+    super.key,
+    this.initialUser,
+    this.initialTransactions,
+    this.userLoaderOverride,
+    this.transactionLoaderOverride,
+    this.deferInitialLoad = false,
+  });
 
   @override
   State<TransactionListScreen> createState() => _TransactionListScreenState();
@@ -15,8 +34,8 @@ class TransactionListScreen extends StatefulWidget {
 
 class _TransactionListScreenState extends State<TransactionListScreen>
     with SingleTickerProviderStateMixin {
-  final TransactionService _transactionService = TransactionService();
-  final AuthService _authService = AuthService();
+  TransactionService? _transactionService;
+  AuthService? _authService;
 
   late TabController _tabController;
   String? _selectedStatus;
@@ -34,7 +53,18 @@ class _TransactionListScreenState extends State<TransactionListScreen>
         _updateRoleFilter();
       }
     });
-    _loadTransactions();
+
+    _currentUserId = widget.initialUser?.id;
+
+    if (widget.initialTransactions != null) {
+      _transactions = List<TransactionModel>.from(widget.initialTransactions!);
+    }
+
+    if (!widget.deferInitialLoad && widget.initialTransactions == null) {
+      _loadTransactions();
+    } else if (widget.deferInitialLoad) {
+      _isLoading = false;
+    }
   }
 
   @override
@@ -71,31 +101,47 @@ class _TransactionListScreenState extends State<TransactionListScreen>
     });
 
     try {
-      final user = await _authService.getCurrentUser();
-      final userId = user?.id;
-      if (userId == null) return;
+      final user = _currentUserId != null
+          ? null
+          : await (widget.userLoaderOverride != null
+                ? widget.userLoaderOverride!()
+                : (_authService ??= AuthService()).getCurrentUser());
 
-      _currentUserId = userId;
-
-      final transactions = await _transactionService.getMyTransactions(
-        userId: userId,
-        status: _selectedStatus,
-        role: _selectedRole == 'all' ? null : _selectedRole,
-      );
-
-      if (mounted) {
-        setState(() {
-          _transactions = transactions;
-        });
-      }
-    } catch (e) {
-      print('Error loading transactions: $e');
-    } finally {
-      if (mounted) {
+      final userId = _currentUserId ?? user?.id;
+      if (userId == null) {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
+        return;
       }
+
+      _currentUserId = userId;
+
+      final transactions = widget.transactionLoaderOverride != null
+          ? await widget.transactionLoaderOverride!(
+              userId: userId,
+              status: _selectedStatus,
+              role: _selectedRole == 'all' ? null : _selectedRole,
+            )
+          : await (_transactionService ??= TransactionService())
+                .getMyTransactions(
+                  userId: userId,
+                  status: _selectedStatus,
+                  role: _selectedRole == 'all' ? null : _selectedRole,
+                );
+
+      if (!mounted) return;
+      setState(() {
+        _transactions = transactions;
+      });
+    } catch (e) {
+      print('Error loading transactions: $e');
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 

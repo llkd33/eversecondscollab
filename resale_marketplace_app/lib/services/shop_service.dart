@@ -7,10 +7,28 @@ import '../config/supabase_config.dart';
 import '../models/shop_model.dart';
 import '../models/product_model.dart';
 import '../utils/uuid.dart';
+import 'product_service.dart';
 
 class ShopService {
   final SupabaseClient _client = SupabaseConfig.client;
   final Random _random = Random();
+  final ProductService _productService = ProductService();
+
+  bool _isMissingOwnerRelationship(PostgrestException error) {
+    if (error.code == 'PGRST200') return true;
+    final message = error.message;
+    if (message is String && message.contains('PGRST200')) return true;
+    if (message != null && message.toString().contains('PGRST200')) return true;
+    return false;
+  }
+
+  bool _isUndefinedColumn(PostgrestException error, String column) {
+    if (error.code == '42703') return true;
+    final message = error.message;
+    if (message is String && message.contains(column)) return true;
+    if (message != null && message.toString().contains(column)) return true;
+    return false;
+  }
 
   // 샵 생성 (회원가입 시 자동 생성) - DB 트리거에 의해 자동 생성되므로 수동 생성은 불필요
   Future<ShopModel?> createShop({
@@ -141,11 +159,30 @@ class ShopService {
         print('getShopById skipped: invalid UUID "$shopId"');
         return null;
       }
-      final response = await _client
-          .from('shops')
-          .select('*, users!owner_id(name, profile_image)')
-          .eq('id', shopId)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeUser) {
+        final selectClause = includeUser
+            ? '*, users!owner_id(name, profile_image)'
+            : '*';
+        return _client
+            .from('shops')
+            .select(selectClause)
+            .eq('id', shopId)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingOwnerRelationship(e)) {
+          print(
+            'Missing shops -> users relationship, retrying getShopById without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (response == null) {
         return null;
@@ -165,11 +202,30 @@ class ShopService {
         print('getShopByOwnerId skipped: invalid UUID "$ownerId"');
         return null;
       }
-      final response = await _client
-          .from('shops')
-          .select('*, users!owner_id(name, profile_image)')
-          .eq('owner_id', ownerId)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeUser) {
+        final selectClause = includeUser
+            ? '*, users!owner_id(name, profile_image)'
+            : '*';
+        return _client
+            .from('shops')
+            .select(selectClause)
+            .eq('owner_id', ownerId)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingOwnerRelationship(e)) {
+          print(
+            'Missing shops -> users relationship, retrying getShopByOwnerId without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (response == null) {
         return null;
@@ -185,11 +241,30 @@ class ShopService {
   // 공유 URL로 샵 조회
   Future<ShopModel?> getShopByShareUrl(String shareUrl) async {
     try {
-      final response = await _client
-          .from('shops')
-          .select('*, users!owner_id(name, profile_image)')
-          .eq('share_url', shareUrl)
-          .maybeSingle();
+      Future<Map<String, dynamic>?> runQuery(bool includeUser) {
+        final selectClause = includeUser
+            ? '*, users!owner_id(name, profile_image)'
+            : '*';
+        return _client
+            .from('shops')
+            .select(selectClause)
+            .eq('share_url', shareUrl)
+            .maybeSingle();
+      }
+
+      Map<String, dynamic>? response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingOwnerRelationship(e)) {
+          print(
+            'Missing shops -> users relationship, retrying getShopByShareUrl without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
 
       if (response == null) {
         return null;
@@ -233,32 +308,90 @@ class ShopService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> _fetchShopProductIds(
+    String shopId, {
+    required bool isResale,
+  }) async {
+    Future<List<Map<String, dynamic>>> runQuery({
+      required bool applyOrder,
+    }) async {
+      final query = _client
+          .from('shop_products')
+          .select('product_id')
+          .eq('shop_id', shopId)
+          .eq('is_resale', isResale);
+
+      final request = applyOrder
+          ? query.order('created_at', ascending: false)
+          : query;
+
+      final response = await request;
+      if (response is List) {
+        return response.cast<Map<String, dynamic>>();
+      }
+      return [];
+    }
+
+    try {
+      return await runQuery(applyOrder: true);
+    } on PostgrestException catch (e) {
+      if (_isUndefinedColumn(e, 'created_at')) {
+        print('shop_products.created_at missing, retrying without order');
+        return await runQuery(applyOrder: false);
+      }
+      rethrow;
+    }
+  }
+
   // 샵의 직접 등록 상품 조회
   Future<List<ProductModel>> getShopProducts(String shopId) async {
     try {
-      final shop = await getShopById(shopId);
-      if (shop == null) return [];
+      final ownerRow = await _client
+          .from('shops')
+          .select('owner_id')
+          .eq('id', shopId)
+          .maybeSingle();
+
+      if (ownerRow == null) return [];
+
+      final ownerId = ownerRow['owner_id'] as String?;
+      if (ownerId == null || ownerId.isEmpty) return [];
 
       final response = await _client
           .from('products')
-          .select('*, users!seller_id(name, profile_image)')
-          .eq('seller_id', shop.ownerId)
-          .eq('status', '판매중')
+          .select('id')
+          .eq('seller_id', ownerId)
+          .eq('status', ProductStatus.onSale)
           .order('created_at', ascending: false);
 
-      return (response as List).map((item) {
-        final product = ProductModel.fromJson(item);
+      if (response is! List || response.isEmpty) return [];
 
-        // 판매자 정보 추가
-        if (item['users'] != null) {
-          return product.copyWith(
-            sellerName: item['users']['name'],
-            sellerProfileImage: item['users']['profile_image'],
-          );
+      final productIds = <String>[];
+      for (final item in response) {
+        final id = item['id'] as String?;
+        if (id != null && id.isNotEmpty) {
+          productIds.add(id);
         }
+      }
 
-        return product;
-      }).toList();
+      if (productIds.isEmpty) return [];
+
+      final products = await _productService.getProductsByIds(productIds);
+
+      if (products.isEmpty) return [];
+
+      final orderMap = <String, int>{};
+      for (var i = 0; i < productIds.length; i++) {
+        orderMap[productIds[i]] = i;
+      }
+
+      products.sort((a, b) {
+        final aIndex = orderMap[a.id] ?? 0;
+        final bIndex = orderMap[b.id] ?? 0;
+        return aIndex.compareTo(bIndex);
+      });
+
+      return products;
     } catch (e) {
       print('Error getting shop products: $e');
       return [];
@@ -268,32 +401,36 @@ class ShopService {
   // 샵의 대신팔기 상품 조회
   Future<List<ProductModel>> getShopResaleProducts(String shopId) async {
     try {
-      // 대신팔기 상품은 shop_products 테이블을 통해 관리
-      final response = await _client
-          .from('shop_products')
-          .select('''
-            products!product_id (
-              *,
-              users!seller_id(name, profile_image)
-            )
-          ''')
-          .eq('shop_id', shopId)
-          .eq('is_resale', true);
+      final rows = await _fetchShopProductIds(shopId, isResale: true);
 
-      return (response as List).map((item) {
-        final productData = item['products'];
-        final product = ProductModel.fromJson(productData);
+      if (rows.isEmpty) return [];
 
-        // 판매자 정보 추가
-        if (productData['users'] != null) {
-          return product.copyWith(
-            sellerName: productData['users']['name'],
-            sellerProfileImage: productData['users']['profile_image'],
-          );
+      final productIds = <String>[];
+      for (final item in rows) {
+        final id = item['product_id'] as String?;
+        if (id != null && id.isNotEmpty) {
+          productIds.add(id);
         }
+      }
 
-        return product;
-      }).toList();
+      if (productIds.isEmpty) return [];
+
+      final products = await _productService.getProductsByIds(productIds);
+
+      if (products.isEmpty) return [];
+
+      final orderMap = <String, int>{};
+      for (var i = 0; i < productIds.length; i++) {
+        orderMap[productIds[i]] = i;
+      }
+
+      products.sort((a, b) {
+        final aIndex = orderMap[a.id] ?? 0;
+        final bIndex = orderMap[b.id] ?? 0;
+        return aIndex.compareTo(bIndex);
+      });
+
+      return products;
     } catch (e) {
       print('Error getting shop resale products: $e');
       return [];
@@ -413,16 +550,35 @@ class ShopService {
   // 인기 샵 목록 조회
   Future<List<ShopModel>> getPopularShops({int limit = 10}) async {
     try {
-      // 상품 수가 많은 샵 순으로 정렬
-      final response = await _client
-          .from('shops')
-          .select('*, users!owner_id(name, profile_image)')
-          .order('created_at', ascending: false)
-          .limit(limit);
+      Future<List<dynamic>> runQuery(bool includeUser) async {
+        final selectClause = includeUser
+            ? '*, users!owner_id(name, profile_image)'
+            : '*';
+        final response = await _client
+            .from('shops')
+            .select(selectClause)
+            .order('created_at', ascending: false)
+            .limit(limit);
 
-      return (response as List)
-          .map((shop) => ShopModel.fromJson(shop))
-          .toList();
+        if (response is List) return response;
+        return [];
+      }
+
+      List<dynamic> response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingOwnerRelationship(e)) {
+          print(
+            'Missing shops -> users relationship, retrying getPopularShops without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
+
+      return response.map((shop) => ShopModel.fromJson(shop)).toList();
     } catch (e) {
       print('Error getting popular shops: $e');
       return [];
@@ -436,16 +592,36 @@ class ShopService {
     int offset = 0,
   }) async {
     try {
-      final response = await _client
-          .from('shops')
-          .select('*, users!owner_id(name, profile_image)')
-          .or('name.ilike.%$query%,description.ilike.%$query%')
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
+      Future<List<dynamic>> runQuery(bool includeUser) async {
+        final selectClause = includeUser
+            ? '*, users!owner_id(name, profile_image)'
+            : '*';
+        final response = await _client
+            .from('shops')
+            .select(selectClause)
+            .or('name.ilike.%$query%,description.ilike.%$query%')
+            .order('created_at', ascending: false)
+            .range(offset, offset + limit - 1);
 
-      return (response as List)
-          .map((shop) => ShopModel.fromJson(shop))
-          .toList();
+        if (response is List) return response;
+        return [];
+      }
+
+      List<dynamic> response;
+      try {
+        response = await runQuery(true);
+      } on PostgrestException catch (e) {
+        if (_isMissingOwnerRelationship(e)) {
+          print(
+            'Missing shops -> users relationship, retrying searchShops without join',
+          );
+          response = await runQuery(false);
+        } else {
+          rethrow;
+        }
+      }
+
+      return response.map((shop) => ShopModel.fromJson(shop)).toList();
     } catch (e) {
       print('Error searching shops: $e');
       return [];

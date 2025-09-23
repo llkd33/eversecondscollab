@@ -33,11 +33,16 @@ import '../models/product_model.dart';
 import '../models/transaction_model.dart';
 import '../screens/common/coming_soon_screen.dart';
 import '../screens/admin/admin_dashboard_screen.dart';
+import '../screens/admin/web_admin_dashboard.dart';
 import '../screens/admin/user_management_screen.dart';
 import '../screens/admin/transaction_monitoring_screen.dart';
 import '../screens/admin/report_management_screen.dart';
 
 class AppRouter {
+  // Global navigator key
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   // Route names
   static const String initialRoute = '/';
   static const String home = '/home';
@@ -59,6 +64,7 @@ class AppRouter {
     final authProvider = context.read<AuthProvider>();
 
     return GoRouter(
+      navigatorKey: navigatorKey,
       initialLocation: '/',
       redirect: (context, state) {
         final isAuthenticated = authProvider.isAuthenticated;
@@ -132,6 +138,9 @@ class AppRouter {
           path: '/auth/kakao/callback',
           name: 'kakao-callback',
           builder: (context, state) => OAuthCallbackScreen(
+            provider: state.uri.queryParameters['provider'],
+            code: state.uri.queryParameters['code'],
+            error: state.uri.queryParameters['error'],
             redirectPath: state.uri.queryParameters['redirect'],
           ),
         ),
@@ -343,6 +352,12 @@ class AppRouter {
           name: 'admin',
           builder: (context, state) =>
               const AdminGuard(child: AdminDashboardScreen()),
+        ),
+        GoRoute(
+          path: '/admin/web',
+          name: 'admin-web',
+          builder: (context, state) =>
+              const AdminGuard(child: WebAdminDashboard()),
         ),
         GoRoute(
           path: '/admin/users',

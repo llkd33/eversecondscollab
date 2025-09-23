@@ -51,15 +51,19 @@ class SafeTransactionService {
           .eq('id', transactionId);
 
       // 안전거래 생성
-      final response = await _client.from('safe_transactions').insert({
-        'transaction_id': transactionId,
-        'deposit_amount': depositAmount,
-        'deposit_confirmed': false,
-        'shipping_confirmed': false,
-        'delivery_confirmed': false,
-        'settlement_status': SettlementStatus.waiting,
-        'admin_notes': '안전거래 생성됨 - ${DateTime.now().toIso8601String()}',
-      }).select().single();
+      final response = await _client
+          .from('safe_transactions')
+          .insert({
+            'transaction_id': transactionId,
+            'deposit_amount': depositAmount,
+            'deposit_confirmed': false,
+            'shipping_confirmed': false,
+            'delivery_confirmed': false,
+            'settlement_status': SettlementStatus.waiting,
+            'admin_notes': '안전거래 생성됨 - ${DateTime.now().toIso8601String()}',
+          })
+          .select()
+          .single();
 
       return SafeTransactionModel.fromJson(response);
     } catch (e) {
@@ -69,10 +73,14 @@ class SafeTransactionService {
   }
 
   // 안전거래 ID로 조회
-  Future<SafeTransactionModel?> getSafeTransactionById(String safeTransactionId) async {
+  Future<SafeTransactionModel?> getSafeTransactionById(
+    String safeTransactionId,
+  ) async {
     try {
       if (!UuidUtils.isValid(safeTransactionId)) {
-        print('getSafeTransactionById skipped: invalid UUID "$safeTransactionId"');
+        print(
+          'getSafeTransactionById skipped: invalid UUID "$safeTransactionId"',
+        );
         return null;
       }
       final response = await _client
@@ -90,7 +98,7 @@ class SafeTransactionService {
           .single();
 
       final safeTransaction = SafeTransactionModel.fromJson(response);
-      
+
       // 조인된 정보 매핑
       final transaction = response['transactions'];
       if (transaction != null) {
@@ -106,7 +114,7 @@ class SafeTransactionService {
           sellerPhone: seller?['phone'],
         );
       }
-      
+
       return safeTransaction;
     } catch (e) {
       print('Error getting safe transaction by id: $e');
@@ -115,10 +123,14 @@ class SafeTransactionService {
   }
 
   // 거래 ID로 안전거래 조회
-  Future<SafeTransactionModel?> getSafeTransactionByTransactionId(String transactionId) async {
+  Future<SafeTransactionModel?> getSafeTransactionByTransactionId(
+    String transactionId,
+  ) async {
     try {
       if (!UuidUtils.isValid(transactionId)) {
-        print('getSafeTransactionByTransactionId skipped: invalid UUID "$transactionId"');
+        print(
+          'getSafeTransactionByTransactionId skipped: invalid UUID "$transactionId"',
+        );
         return null;
       }
       final response = await _client
@@ -139,7 +151,7 @@ class SafeTransactionService {
       if (response == null) return null;
 
       final safeTransaction = SafeTransactionModel.fromJson(response);
-      
+
       // 조인된 정보 매핑
       final transaction = response['transactions'];
       if (transaction != null) {
@@ -156,7 +168,7 @@ class SafeTransactionService {
           sellerPhone: seller?['phone'],
         );
       }
-      
+
       return safeTransaction;
     } catch (e) {
       print('Error getting safe transaction by transaction id: $e');
@@ -187,7 +199,8 @@ class SafeTransactionService {
       }
 
       // 관리자에게 SMS 발송
-      final adminMessage = '💰 입금확인 요청\n'
+      final adminMessage =
+          '💰 입금확인 요청\n'
           '상품: $productTitle\n'
           '금액: ${_formatPrice(depositAmount)}\n'
           '구매자: ${safeTransaction.buyerName ?? 'N/A'} ($buyerPhone)\n'
@@ -257,7 +270,8 @@ class SafeTransactionService {
           .update({
             'deposit_confirmed': true,
             'deposit_confirmed_at': DateTime.now().toIso8601String(),
-            'admin_notes': adminNotes ?? '입금 확인 완료 - ${DateTime.now().toIso8601String()}',
+            'admin_notes':
+                adminNotes ?? '입금 확인 완료 - ${DateTime.now().toIso8601String()}',
           })
           .eq('id', safeTransactionId);
 
@@ -273,7 +287,8 @@ class SafeTransactionService {
 
       // 판매자에게 SMS 발송
       if (safeTransaction.sellerPhone != null) {
-        final sellerMessage = '✅ 입금이 확인되었습니다.\n'
+        final sellerMessage =
+            '✅ 입금이 확인되었습니다.\n'
             '상품: ${safeTransaction.productTitle ?? '상품'}\n'
             '금액: ${safeTransaction.formattedDepositAmount}\n'
             '상품을 발송해주세요.';
@@ -296,7 +311,8 @@ class SafeTransactionService {
 
         final resellerPhone = resellerResponse['phone'] as String?;
         if (resellerPhone != null) {
-          final resellerMessage = '✅ 입금이 확인되었습니다.\n'
+          final resellerMessage =
+              '✅ 입금이 확인되었습니다.\n'
               '상품: ${safeTransaction.productTitle ?? '상품'}\n'
               '대신판매 수수료 정산이 예정되어 있습니다.';
 
@@ -380,16 +396,17 @@ class SafeTransactionService {
 
       // 구매자에게 배송 정보 SMS 발송
       if (safeTransaction.buyerPhone != null) {
-        String buyerMessage = '📦 상품이 발송되었습니다.\n'
+        String buyerMessage =
+            '📦 상품이 발송되었습니다.\n'
             '상품: ${safeTransaction.productTitle ?? '상품'}\n';
-        
+
         if (trackingNumber != null) {
           buyerMessage += '운송장번호: $trackingNumber\n';
         }
         if (courier != null) {
           buyerMessage += '택배사: $courier\n';
         }
-        
+
         buyerMessage += '상품 수령 후 완료 버튼을 눌러주세요.';
 
         await _smsService.sendSMS(
@@ -424,9 +441,7 @@ class SafeTransactionService {
   }
 
   // 배송 완료 확인 (구매자)
-  Future<bool> confirmDelivery({
-    required String safeTransactionId,
-  }) async {
+  Future<bool> confirmDelivery({required String safeTransactionId}) async {
     try {
       // 안전거래 정보 조회
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
@@ -465,17 +480,15 @@ class SafeTransactionService {
       final chatId = transactionResponse['chat_id'] as String?;
 
       // 회사에 거래 정상 처리 SMS 발송
-      final companyMessage = '✅ 거래가 정상 완료되었습니다.\n'
+      final companyMessage =
+          '✅ 거래가 정상 완료되었습니다.\n'
           '상품: ${safeTransaction.productTitle ?? '상품'}\n'
           '금액: ${safeTransaction.formattedDepositAmount}\n'
           '구매자: ${safeTransaction.buyerName ?? 'N/A'}\n'
           '판매자: ${safeTransaction.sellerName ?? 'N/A'}\n'
           '정산 처리를 진행해주세요.';
 
-      await _smsService.sendSMSToAdmin(
-        message: companyMessage,
-        type: '거래완료',
-      );
+      await _smsService.sendSMSToAdmin(message: companyMessage, type: '거래완료');
 
       // 채팅방에 시스템 메시지 전송
       if (chatId != null) {
@@ -533,7 +546,8 @@ class SafeTransactionService {
           .from('safe_transactions')
           .update({
             'settlement_status': SettlementStatus.completed,
-            'admin_notes': adminNotes ?? '정산 처리 완료 - ${DateTime.now().toIso8601String()}',
+            'admin_notes':
+                adminNotes ?? '정산 처리 완료 - ${DateTime.now().toIso8601String()}',
           })
           .eq('id', safeTransactionId);
 
@@ -556,7 +570,8 @@ class SafeTransactionService {
 
         final resellerPhone = resellerResponse['phone'] as String?;
         if (resellerPhone != null) {
-          final commissionMessage = '💰 대신판매 수수료가 정산되었습니다.\n'
+          final commissionMessage =
+              '💰 대신판매 수수료가 정산되었습니다.\n'
               '상품: ${safeTransaction.productTitle ?? '상품'}\n'
               '수수료: ${_formatPrice(resaleFee)}\n'
               '감사합니다.';
@@ -591,9 +606,7 @@ class SafeTransactionService {
     int offset = 0,
   }) async {
     try {
-      var query = _client
-          .from('safe_transactions')
-          .select('''
+      var query = _client.from('safe_transactions').select('''
             *,
             transactions!transaction_id (
               *,
@@ -613,7 +626,7 @@ class SafeTransactionService {
 
       return (response as List).map((item) {
         final safeTransaction = SafeTransactionModel.fromJson(item);
-        
+
         // 조인된 정보 매핑
         final transaction = item['transactions'];
         if (transaction != null) {
@@ -629,7 +642,7 @@ class SafeTransactionService {
             sellerPhone: seller?['phone'],
           );
         }
-        
+
         return safeTransaction;
       }).toList();
     } catch (e) {
@@ -709,7 +722,8 @@ class SafeTransactionService {
           .single();
 
       final status = transactionResponse['status'] as String;
-      final transactionType = transactionResponse['transaction_type'] as String?;
+      final transactionType =
+          transactionResponse['transaction_type'] as String?;
 
       // 이미 안전거래인 경우
       if (transactionType == '안전거래') {
@@ -722,7 +736,9 @@ class SafeTransactionService {
       }
 
       // 이미 안전거래가 생성된 경우
-      final existingSafeTransaction = await getSafeTransactionByTransactionId(transactionId);
+      final existingSafeTransaction = await getSafeTransactionByTransactionId(
+        transactionId,
+      );
       if (existingSafeTransaction != null) {
         return false;
       }
@@ -735,7 +751,9 @@ class SafeTransactionService {
   }
 
   // 안전거래 진행 단계 확인
-  Future<Map<String, dynamic>> getSafeTransactionProgress(String safeTransactionId) async {
+  Future<Map<String, dynamic>> getSafeTransactionProgress(
+    String safeTransactionId,
+  ) async {
     try {
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
       if (safeTransaction == null) {
@@ -755,9 +773,12 @@ class SafeTransactionService {
           'settlement_status': safeTransaction.settlementStatus,
         },
         'timestamps': {
-          'deposit_confirmed_at': safeTransaction.depositConfirmedAt?.toIso8601String(),
-          'shipping_confirmed_at': safeTransaction.shippingConfirmedAt?.toIso8601String(),
-          'delivery_confirmed_at': safeTransaction.deliveryConfirmedAt?.toIso8601String(),
+          'deposit_confirmed_at': safeTransaction.depositConfirmedAt
+              ?.toIso8601String(),
+          'shipping_confirmed_at': safeTransaction.shippingConfirmedAt
+              ?.toIso8601String(),
+          'delivery_confirmed_at': safeTransaction.deliveryConfirmedAt
+              ?.toIso8601String(),
         },
       };
     } catch (e) {
@@ -767,7 +788,10 @@ class SafeTransactionService {
   }
 
   // 안전거래 취소 (거래 시작 전에만 가능)
-  Future<bool> cancelSafeTransaction(String safeTransactionId, String reason) async {
+  Future<bool> cancelSafeTransaction(
+    String safeTransactionId,
+    String reason,
+  ) async {
     try {
       final safeTransaction = await getSafeTransactionById(safeTransactionId);
       if (safeTransaction == null) {
@@ -817,9 +841,6 @@ class SafeTransactionService {
 
   // 가격 포맷팅 헬퍼
   String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}원';
+    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   }
 }

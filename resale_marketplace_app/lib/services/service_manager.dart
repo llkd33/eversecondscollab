@@ -15,7 +15,7 @@ import 'sms_service.dart';
 class ServiceManager {
   static ServiceManager? _instance;
   static ServiceManager get instance => _instance ??= ServiceManager._();
-  
+
   ServiceManager._();
 
   // 서비스 인스턴스들
@@ -39,7 +39,7 @@ class ServiceManager {
     try {
       // Supabase 초기화
       await SupabaseConfig.initialize();
-      
+
       // 카카오 SDK 초기화
       AuthService.initializeKakao();
 
@@ -65,7 +65,9 @@ class ServiceManager {
   /// 초기화 확인
   void _ensureInitialized() {
     if (!_isInitialized) {
-      throw StateError('ServiceManager not initialized. Call initialize() first.');
+      throw StateError(
+        'ServiceManager not initialized. Call initialize() first.',
+      );
     }
   }
 
@@ -123,7 +125,7 @@ class ServiceManager {
 
   // 현재 사용자 정보
   User? get currentUser => SupabaseConfig.currentUser;
-  
+
   // 인증 상태 스트림
   Stream<AuthState> get authStateChanges => SupabaseConfig.authStateChanges;
 
@@ -137,7 +139,7 @@ class ServiceManager {
   }
 
   /// 실시간 기능 구독 관리
-  
+
   // 채팅 구독
   StreamSubscription<List<Map<String, dynamic>>> subscribeToChat(
     String chatId,
@@ -166,7 +168,7 @@ class ServiceManager {
     int limit = 20,
   }) async {
     _ensureInitialized();
-    
+
     final results = <String, dynamic>{};
 
     try {
@@ -204,20 +206,19 @@ class ServiceManager {
   /// 대시보드 데이터 조회 (관리자용)
   Future<Map<String, dynamic>> getDashboardData() async {
     _ensureInitialized();
-    
+
     try {
       // 사용자 통계
-      final userStats = await client
-          .from('users')
-          .select('role')
-          .then((response) {
-            final stats = <String, int>{};
-            for (final user in response) {
-              final role = user['role'] as String;
-              stats[role] = (stats[role] ?? 0) + 1;
-            }
-            return stats;
-          });
+      final userStats = await client.from('users').select('role').then((
+        response,
+      ) {
+        final stats = <String, int>{};
+        for (final user in response) {
+          final role = user['role'] as String;
+          stats[role] = (stats[role] ?? 0) + 1;
+        }
+        return stats;
+      });
 
       // 상품 통계
       final productStats = await _productService.getProductCountByCategory();
@@ -236,7 +237,8 @@ class ServiceManager {
           });
 
       // 안전거래 통계
-      final safeTransactionStats = await _safeTransactionService.getSafeTransactionStats();
+      final safeTransactionStats = await _safeTransactionService
+          .getSafeTransactionStats();
 
       // SMS 통계
       final smsStats = await _smsService.getSMSStats();
@@ -258,17 +260,19 @@ class ServiceManager {
   /// 사용자별 통합 통계
   Future<Map<String, dynamic>> getUserDashboard(String userId) async {
     _ensureInitialized();
-    
+
     try {
       // 사용자 기본 통계
       final userStats = await _userService.getUserStats(userId);
-      
+
       // 거래 통계
-      final transactionStats = await _transactionService.getTransactionStats(userId);
-      
+      final transactionStats = await _transactionService.getTransactionStats(
+        userId,
+      );
+
       // 리뷰 통계
       final reviewStats = await _reviewService.getUserRatingStats(userId);
-      
+
       // 샵 통계
       final userShop = await _shopService.getShopByOwnerId(userId);
       Map<String, dynamic> shopStats = {};

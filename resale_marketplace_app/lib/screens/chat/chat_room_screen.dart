@@ -17,6 +17,11 @@ class ChatRoomScreen extends StatefulWidget {
   final bool isResaleChat; // 대신팔기 채팅방 여부
   final String? resellerName; // 대신판매자 이름
   final String? originalSellerName; // 원 판매자 이름
+  final ChatService? chatService;
+  final AuthService? authService;
+  final bool skipInitialization;
+  final List<MessageModel>? initialMessages;
+  final UserModel? testCurrentUser;
 
   const ChatRoomScreen({
     super.key,
@@ -26,6 +31,11 @@ class ChatRoomScreen extends StatefulWidget {
     this.isResaleChat = false,
     this.resellerName,
     this.originalSellerName,
+    this.chatService,
+    this.authService,
+    this.skipInitialization = false,
+    this.initialMessages,
+    this.testCurrentUser,
   });
 
   @override
@@ -35,8 +45,8 @@ class ChatRoomScreen extends StatefulWidget {
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final ChatService _chatService = ChatService();
-  final AuthService _authService = AuthService();
+  late final ChatService _chatService;
+  late final AuthService _authService;
   final ImagePicker _picker = ImagePicker();
   List<MessageModel> _messages = [];
   StreamSubscription? _messageSubscription;
@@ -48,42 +58,51 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeChat();
+    _chatService = widget.chatService ?? ChatService();
+    _authService = widget.authService ?? AuthService();
+
+    if (widget.skipInitialization) {
+      _currentUser = widget.testCurrentUser;
+      _messages = widget.initialMessages ?? [];
+      _isLoading = false;
+    } else {
+      _initializeChat();
+    }
   }
 
   Future<void> _initializeChat() async {
     try {
       setState(() => _isLoading = true);
-      
+
       // Get current user
       _currentUser = await _authService.getCurrentUser();
-      
+
       if (_currentUser != null) {
         // Load existing messages
         await _loadMessages();
-        
+
         // Subscribe to new messages
         _subscribeToMessages();
       }
-      
+
       setState(() => _isLoading = false);
     } catch (e) {
       print('Error initializing chat: $e');
       setState(() => _isLoading = false);
     }
   }
-  
+
   Future<void> _loadMessages() async {
     try {
       final messages = await _chatService.getChatMessages(
         widget.chatRoomId,
         limit: 50,
       );
-      
+
       setState(() {
         _messages = messages;
       });
-      
+
       // Scroll to bottom after loading messages
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -94,35 +113,34 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       print('Error loading messages: $e');
     }
   }
-  
+
   void _subscribeToMessages() {
-    _messageSubscription = _chatService.subscribeToChat(
-      widget.chatRoomId,
-      (MessageModel newMessage) {
-        // Don't add if message already exists
-        if (!_messages.any((m) => m.id == newMessage.id)) {
-          setState(() {
-            _messages.add(newMessage);
-          });
-          
-          // Mark chat as read if user is viewing
-          if (_currentUser != null) {
-            _chatService.markChatAsRead(widget.chatRoomId, _currentUser!.id);
-          }
-          
-          // Auto scroll to new message
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
-          });
+    _messageSubscription = _chatService.subscribeToChat(widget.chatRoomId, (
+      MessageModel newMessage,
+    ) {
+      // Don't add if message already exists
+      if (!_messages.any((m) => m.id == newMessage.id)) {
+        setState(() {
+          _messages.add(newMessage);
+        });
+
+        // Mark chat as read if user is viewing
+        if (_currentUser != null) {
+          _chatService.markChatAsRead(widget.chatRoomId, _currentUser!.id);
         }
-      },
-    );
+
+        // Auto scroll to new message
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -131,14 +149,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (_currentUser != null) {
       _chatService.markChatAsRead(widget.chatRoomId, _currentUser!.id);
     }
-    
+
     _messageController.dispose();
     _scrollController.dispose();
     _messageSubscription?.cancel();
     _chatService.unsubscribeFromChat(widget.chatRoomId);
     super.dispose();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -155,9 +172,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           : Column(
               children: [
                 if (widget.productTitle.isNotEmpty) _buildProductInfo(),
-                Expanded(
-                  child: _buildMessageList(),
-                ),
+                Expanded(child: _buildMessageList()),
                 _buildTransactionButtons(),
                 _buildMessageInput(),
               ],
@@ -170,15 +185,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.userName,
-            style: AppStyles.headingSmall,
-          ),
+          Text(widget.userName, style: AppStyles.headingSmall),
           Text(
             '온라인', // TODO: 실제 온라인 상태로 교체
-            style: AppStyles.bodySmall.copyWith(
-              color: AppTheme.successColor,
-            ),
+            style: AppStyles.bodySmall.copyWith(color: AppTheme.successColor),
           ),
         ],
       ),
@@ -217,9 +227,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey, width: 0.5),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey, width: 0.5)),
       ),
       child: Row(
         children: [
@@ -230,10 +238,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               color: Colors.grey[300],
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
-              Icons.image,
-              color: Colors.grey,
-            ),
+            child: const Icon(Icons.image, color: Colors.grey),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -273,23 +278,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 48,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[400]),
             const SizedBox(height: AppSpacing.md),
             Text(
               '대화를 시작해보세요',
-              style: AppStyles.bodyMedium.copyWith(
-                color: Colors.grey[600],
-              ),
+              style: AppStyles.bodyMedium.copyWith(color: Colors.grey[600]),
             ),
           ],
         ),
       );
     }
-    
+
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -297,7 +296,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       itemBuilder: (context, index) {
         final message = _messages[index];
         final isMe = message.senderId == _currentUser?.id;
-        
+
         return Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
           child: _buildMessageBubble(message, isMe),
@@ -322,15 +321,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ),
           child: Text(
             message.content,
-            style: AppStyles.bodySmall.copyWith(
-              color: Colors.grey[700],
-            ),
+            style: AppStyles.bodySmall.copyWith(color: Colors.grey[700]),
             textAlign: TextAlign.center,
           ),
         ),
       );
     }
-    
+
     return Row(
       mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -340,8 +337,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             radius: 16,
             backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
             child: Text(
-              message.senderName?.substring(0, 1).toUpperCase() ?? 
-                widget.userName.substring(0, 1).toUpperCase(),
+              message.senderName?.substring(0, 1).toUpperCase() ??
+                  widget.userName.substring(0, 1).toUpperCase(),
               style: const TextStyle(
                 color: AppTheme.primaryColor,
                 fontSize: 12,
@@ -353,10 +350,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ],
         Flexible(
           child: Column(
-            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
               Container(
-                padding: message.messageType == 'image' 
+                padding: message.messageType == 'image'
                     ? const EdgeInsets.all(4)
                     : const EdgeInsets.symmetric(
                         horizontal: AppSpacing.md,
@@ -365,8 +364,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 decoration: BoxDecoration(
                   color: isMe ? AppTheme.primaryColor : Colors.white,
                   borderRadius: BorderRadius.circular(18).copyWith(
-                    bottomLeft: isMe ? const Radius.circular(18) : const Radius.circular(4),
-                    bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(18),
+                    bottomLeft: isMe
+                        ? const Radius.circular(18)
+                        : const Radius.circular(4),
+                    bottomRight: isMe
+                        ? const Radius.circular(4)
+                        : const Radius.circular(18),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -392,9 +395,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                               color: Colors.grey[200],
                               child: Center(
                                 child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes != null
+                                  value:
+                                      loadingProgress.expectedTotalBytes != null
                                       ? loadingProgress.cumulativeBytesLoaded /
-                                          loadingProgress.expectedTotalBytes!
+                                            loadingProgress.expectedTotalBytes!
                                       : null,
                                 ),
                               ),
@@ -452,9 +456,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey, width: 0.5)),
       ),
       child: Column(
         children: [
@@ -469,11 +471,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Colors.blue[600],
-                  size: 16,
-                ),
+                Icon(Icons.info_outline, color: Colors.blue[600], size: 16),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
@@ -488,7 +486,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          
+
           // 대신판매 거래 표시
           if (widget.isResaleChat) ...[
             Container(
@@ -501,11 +499,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.store,
-                    color: Colors.orange[600],
-                    size: 16,
-                  ),
+                  Icon(Icons.store, color: Colors.orange[600], size: 16),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
@@ -521,7 +515,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
           ],
-          
+
           // 거래 방식 선택 버튼
           Row(
             children: [
@@ -533,7 +527,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.successColor,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.md,
+                    ),
                   ),
                 ),
               ),
@@ -546,7 +542,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.primaryColor,
                     side: const BorderSide(color: AppTheme.primaryColor),
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.md,
+                    ),
                   ),
                 ),
               ),
@@ -562,9 +560,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey, width: 0.5)),
       ),
       child: Row(
         children: [
@@ -611,11 +607,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             child: IconButton(
               onPressed: _sendMessage,
-              icon: const Icon(
-                Icons.send,
-                color: Colors.white,
-                size: 20,
-              ),
+              icon: const Icon(Icons.send, color: Colors.white, size: 20),
             ),
           ),
         ],
@@ -626,7 +618,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String _formatMessageTime(DateTime timestamp) {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
-    
+
     if (difference.inMinutes < 1) {
       return '방금 전';
     } else if (difference.inHours < 1) {
@@ -686,10 +678,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('이미지 전송 실패: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('이미지 전송 실패: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -910,13 +899,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               // 시스템 메시지 전송
               await _chatService.sendSystemMessage(
                 chatId: widget.chatRoomId,
                 content: '입금확인 요청이 전송되었습니다.\n관리자가 확인 후 연락드리겠습니다.',
               );
-              
+
               // TODO: 실제 SMS 발송 로직 구현
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -957,13 +946,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               // 시스템 메시지 전송
               await _chatService.sendSystemMessage(
                 chatId: widget.chatRoomId,
                 content: '일반거래가 시작되었습니다.\n안전한 거래를 위해 직거래를 권장합니다.',
               );
-              
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('일반거래가 시작되었습니다'),
@@ -984,7 +973,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _showTrackingDialog() {
     final trackingController = TextEditingController();
     String selectedCourier = 'CJ대한통운';
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1001,17 +990,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   labelText: '택배사',
                   border: OutlineInputBorder(),
                 ),
-                items: [
-                  'CJ대한통운',
-                  '한진택배',
-                  '로젠택배',
-                  '우체국택배',
-                  '롯데택배',
-                  'GSPostbox',
-                ].map((courier) => DropdownMenuItem(
-                  value: courier,
-                  child: Text(courier),
-                )).toList(),
+                items: ['CJ대한통운', '한진택배', '로젠택배', '우체국택배', '롯데택배', 'GSPostbox']
+                    .map(
+                      (courier) => DropdownMenuItem(
+                        value: courier,
+                        child: Text(courier),
+                      ),
+                    )
+                    .toList(),
                 onChanged: (value) {
                   if (value != null) {
                     setState(() {
@@ -1042,16 +1028,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 final trackingNumber = trackingController.text.trim();
                 if (trackingNumber.isNotEmpty) {
                   Navigator.pop(context);
-                  
+
                   // 시스템 메시지로 배송 정보 전송
                   await _chatService.sendSystemMessage(
                     chatId: widget.chatRoomId,
-                    content: '📦 배송이 시작되었습니다!\n\n'
+                    content:
+                        '📦 배송이 시작되었습니다!\n\n'
                         '택배사: $selectedCourier\n'
                         '운송장번호: $trackingNumber\n\n'
                         '배송 조회는 해당 택배사 홈페이지에서 확인하실 수 있습니다.',
                   );
-                  
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('배송 정보가 전송되었습니다'),
@@ -1079,19 +1066,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           children: [
             const Text('신고 사유를 선택해주세요:'),
             const SizedBox(height: AppSpacing.md),
-            ...[
-              '사기/허위 정보',
-              '욕설/비방',
-              '스팸/광고',
-              '기타',
-            ].map((reason) => RadioListTile<String>(
-              title: Text(reason),
-              value: reason,
-              groupValue: null, // TODO: 상태 관리
-              onChanged: (value) {
-                // TODO: 신고 사유 선택 로직
-              },
-            )),
+            ...['사기/허위 정보', '욕설/비방', '스팸/광고', '기타'].map(
+              (reason) => RadioListTile<String>(
+                title: Text(reason),
+                value: reason,
+                groupValue: null, // TODO: 상태 관리
+                onChanged: (value) {
+                  // TODO: 신고 사유 선택 로직
+                },
+              ),
+            ),
           ],
         ),
         actions: [
@@ -1103,13 +1087,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             onPressed: () {
               Navigator.pop(context);
               // TODO: 신고 제출 로직
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('신고가 접수되었습니다')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다')));
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('신고하기'),
           ),
         ],
@@ -1122,7 +1104,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('사용자 차단'),
-        content: Text('${widget.userName}님을 차단하시겠습니까?\n\n차단된 사용자와는 더 이상 채팅할 수 없습니다.'),
+        content: Text(
+          '${widget.userName}님을 차단하시겠습니까?\n\n차단된 사용자와는 더 이상 채팅할 수 없습니다.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1136,9 +1120,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 SnackBar(content: Text('${widget.userName}님을 차단했습니다')),
               );
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
             child: const Text('차단하기'),
           ),
         ],
@@ -1168,10 +1150,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             const SizedBox(height: AppSpacing.lg),
             const Text(
               '빠른 작업',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: AppSpacing.lg),
             GridView.count(
@@ -1230,18 +1209,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 32,
-              color: AppTheme.primaryColor,
-            ),
+            Icon(icon, size: 32, color: AppTheme.primaryColor),
             const SizedBox(height: AppSpacing.sm),
             Text(
               label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1266,14 +1238,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              
+
               // 시스템 메시지 전송
               await _chatService.sendSystemMessage(
                 chatId: widget.chatRoomId,
-                content: '🎉 거래가 완료되었습니다!\n\n'
+                content:
+                    '🎉 거래가 완료되었습니다!\n\n'
                     '서로에게 리뷰를 남겨주시면\n다른 사용자들에게 도움이 됩니다.',
               );
-              
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('거래가 완료되었습니다'),
@@ -1311,18 +1284,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               Text('3. 입금확인 요청'),
               Text('4. 상품 수령 후 완료'),
               SizedBox(height: 16),
-              Text(
-                '📞 고객센터',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text('📞 고객센터', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
               Text('전화: 1588-0000'),
               Text('운영시간: 평일 9:00-18:00'),
               SizedBox(height: 16),
-              Text(
-                '⚠️ 주의사항',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text('⚠️ 주의사항', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
               Text('• 개인정보를 요구하는 경우 신고해주세요'),
               Text('• 직거래 시 안전한 장소에서 만나세요'),

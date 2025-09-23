@@ -6,6 +6,95 @@ import '../utils/uuid.dart';
 
 class ProductService {
   final SupabaseClient _client = SupabaseConfig.client;
+  static const _productSellerSelect = '*, users!seller_id(name, profile_image)';
+
+  bool _isMissingSellerRelationship(PostgrestException error) {
+    if (error.code == 'PGRST200') return true;
+    final message = error.message;
+    if (message is String && message.contains('PGRST200')) return true;
+    if (message != null && message.toString().contains('PGRST200')) return true;
+    return false;
+  }
+
+  Future<List<ProductModel>> getProductsByIds(
+    List<String> ids, {
+    String orderBy = 'created_at',
+    bool ascending = false,
+  }) async {
+    if (ids.isEmpty) return [];
+
+    var buildQuery = (bool includeSeller) {
+      return _client
+          .from('products')
+          .select(includeSeller ? _productSellerSelect : '*')
+          .inFilter('id', ids)
+          .order(orderBy, ascending: ascending);
+    };
+
+    Future<List<Map<String, dynamic>>> runQuery(bool includeSeller) async {
+      final response = await buildQuery(includeSeller);
+      if (response is! List) return [];
+      final items = response.cast<Map<String, dynamic>>();
+      if (!includeSeller) await _attachSellerInfo(items);
+      return items;
+    }
+
+    try {
+      final items = await runQuery(true);
+      return items.map(ProductModel.fromJson).toList();
+    } on PostgrestException catch (e) {
+      if (_isMissingSellerRelationship(e)) {
+        print(
+          'Missing products -> users relationship, retrying getProductsByIds without join',
+        );
+        final fallback = await runQuery(false);
+        return fallback.map(ProductModel.fromJson).toList();
+      }
+      print('Error getting products by ids: $e');
+      return [];
+    } catch (e) {
+      print('Error getting products by ids: $e');
+      return [];
+    }
+  }
+
+  Future<void> _attachSellerInfo(List<Map<String, dynamic>> rows) async {
+    final sellerIds = <String>{};
+    for (final row in rows) {
+      final sellerId = row['seller_id'] as String?;
+      if (sellerId != null && sellerId.isNotEmpty && row['users'] == null) {
+        sellerIds.add(sellerId);
+      }
+    }
+
+    if (sellerIds.isEmpty) return;
+
+    try {
+      final sellerResponse = await _client
+          .from('users')
+          .select('id, name, profile_image')
+          .inFilter('id', sellerIds.toList());
+
+      if (sellerResponse is! List) return;
+
+      final sellers = <String, Map<String, dynamic>>{};
+      for (final item in sellerResponse) {
+        if (item is Map<String, dynamic>) {
+          final id = item['id'] as String?;
+          if (id != null) sellers[id] = item;
+        }
+      }
+
+      for (final row in rows) {
+        final sellerId = row['seller_id'] as String?;
+        if (sellerId != null && sellers.containsKey(sellerId)) {
+          row['users'] = sellers[sellerId];
+        }
+      }
+    } catch (e) {
+      print('Failed to attach seller info fallback: $e');
+    }
+  }
 
   // 상품 생성
   Future<ProductModel?> createProduct({
@@ -77,23 +166,47 @@ class ProductService {
 
   // 상품 ID로 조회
   Future<ProductModel?> getProductById(String productId) async {
-    try {
-      // Guard invalid UUIDs to prevent Postgres 22P02
-      if (!UuidUtils.isValid(productId)) {
-        print('getProductById skipped: invalid UUID "$productId"');
-        return null;
-      }
-      final response = await _client
-          .from('products')
-          .select('*, users!seller_id(name, profile_image)')
-          .eq('id', productId)
-          .single();
-
-      return ProductModel.fromJson(response);
-    } catch (e) {
-      print('Error getting product by id: $e');
+    if (!UuidUtils.isValid(productId)) {
+      print('getProductById skipped: invalid UUID "$productId"');
       return null;
     }
+
+    Future<Map<String, dynamic>?> runQuery(bool includeSeller) async {
+      final selectClause = includeSeller ? _productSellerSelect : '*';
+      final builder = _client
+          .from('products')
+          .select(selectClause)
+          .eq('id', productId);
+
+      final result = includeSeller
+          ? await builder.single()
+          : await builder.maybeSingle();
+
+      if (result is Map<String, dynamic>) {
+        if (!includeSeller) {
+          await _attachSellerInfo([result]);
+        }
+        return result;
+      }
+      return null;
+    }
+
+    try {
+      final response = await runQuery(true);
+      if (response != null) return ProductModel.fromJson(response);
+    } on PostgrestException catch (e) {
+      if (_isMissingSellerRelationship(e)) {
+        print(
+          'Missing products -> users relationship, retrying getProductById without join',
+        );
+        final fallback = await runQuery(false);
+        if (fallback != null) return ProductModel.fromJson(fallback);
+      }
+      print('Error getting product by id: $e');
+    } catch (e) {
+      print('Error getting product by id: $e');
+    }
+    return null;
   }
 
   // 상품 목록 조회 (필터링 포함)
@@ -103,36 +216,62 @@ class ProductService {
     String? searchQuery,
     bool? resaleEnabled,
     String? sellerId,
+    int? minPrice,
+    int? maxPrice,
     int limit = 20,
     int offset = 0,
     String orderBy = 'created_at',
     bool ascending = false,
   }) async {
-    try {
+    var buildQuery = (bool includeSeller) {
       var query = _client
           .from('products')
-          .select('*, users!seller_id(name, profile_image)');
+          .select(includeSeller ? _productSellerSelect : '*');
 
-      // 필터 적용
       if (category != null) query = query.eq('category', category);
       if (status != null) query = query.eq('status', status);
-      if (resaleEnabled != null)
+      if (resaleEnabled != null) {
         query = query.eq('resale_enabled', resaleEnabled);
+      }
       if (sellerId != null) query = query.eq('seller_id', sellerId);
       if (searchQuery != null && searchQuery.isNotEmpty) {
         query = query.or(
           'title.ilike.%$searchQuery%,description.ilike.%$searchQuery%',
         );
       }
+      if (minPrice != null) {
+        query = query.gte('price', minPrice);
+      }
+      if (maxPrice != null) {
+        query = query.lte('price', maxPrice);
+      }
+      return query;
+    };
 
-      // 정렬 및 페이징
-      final response = await query
-          .order(orderBy, ascending: ascending)
-          .range(offset, offset + limit - 1);
+    Future<List<ProductModel>> runQuery(bool includeSeller) async {
+      final response = await buildQuery(
+        includeSeller,
+      ).order(orderBy, ascending: ascending).range(offset, offset + limit - 1);
 
-      return (response as List).map((item) {
-        return ProductModel.fromJson(item);
-      }).toList();
+      if (response is! List) return [];
+      final items = response.cast<Map<String, dynamic>>();
+      if (!includeSeller) {
+        await _attachSellerInfo(items);
+      }
+      return items.map(ProductModel.fromJson).toList();
+    }
+
+    try {
+      return await runQuery(true);
+    } on PostgrestException catch (e) {
+      if (_isMissingSellerRelationship(e)) {
+        print(
+          'Missing products -> users relationship, retrying getProducts without join',
+        );
+        return await runQuery(false);
+      }
+      print('Error getting products: $e');
+      return [];
     } catch (e) {
       print('Error getting products: $e');
       return [];
@@ -159,14 +298,13 @@ class ProductService {
     int limit = 20,
     int offset = 0,
   }) async {
-    try {
+    var buildQuery = (bool includeSeller) {
       var query = _client
           .from('products')
-          .select('*, users!seller_id(name, profile_image)')
+          .select(includeSeller ? _productSellerSelect : '*')
           .eq('resale_enabled', true)
           .eq('status', '판매중');
 
-      // 필터 적용
       if (category != null && category != '전체') {
         query = query.eq('category', category);
       }
@@ -189,13 +327,31 @@ class ProductService {
         query = query.gte('resale_fee_percentage', minCommissionRate);
       }
 
-      final response = await query
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
+      return query;
+    };
 
-      return (response as List).map((item) {
-        return ProductModel.fromJson(item);
-      }).toList();
+    Future<List<ProductModel>> runQuery(bool includeSeller) async {
+      final response = await buildQuery(
+        includeSeller,
+      ).order('created_at', ascending: false).range(offset, offset + limit - 1);
+
+      if (response is! List) return [];
+      final items = response.cast<Map<String, dynamic>>();
+      if (!includeSeller) await _attachSellerInfo(items);
+      return items.map(ProductModel.fromJson).toList();
+    }
+
+    try {
+      return await runQuery(true);
+    } on PostgrestException catch (e) {
+      if (_isMissingSellerRelationship(e)) {
+        print(
+          'Missing products -> users relationship, retrying getResaleEnabledProducts without join',
+        );
+        return await runQuery(false);
+      }
+      print('Error getting resale enabled products: $e');
+      return [];
     } catch (e) {
       print('Error getting resale enabled products: $e');
       return [];
@@ -313,18 +469,16 @@ class ProductService {
     int limit = 20,
     int offset = 0,
   }) async {
-    try {
+    var buildQuery = (bool includeSeller) {
       var supabaseQuery = _client
           .from('products')
-          .select('*, users!seller_id(name, profile_image)')
+          .select(includeSeller ? _productSellerSelect : '*')
           .eq('status', '판매중');
 
-      // 카테고리 필터
       if (category != null && category.isNotEmpty) {
         supabaseQuery = supabaseQuery.eq('category', category);
       }
 
-      // 가격 필터
       if (minPrice != null) {
         supabaseQuery = supabaseQuery.gte('price', minPrice);
       }
@@ -332,43 +486,59 @@ class ProductService {
         supabaseQuery = supabaseQuery.lte('price', maxPrice);
       }
 
-      // 검색어 필터 (제목 또는 설명에서 검색)
       if (query.isNotEmpty) {
         supabaseQuery = supabaseQuery.or(
           'title.ilike.%$query%,description.ilike.%$query%',
         );
       }
 
-      // 정렬 설정 및 범위 지정
-      String orderColumn = 'created_at';
-      bool ascending = false;
+      return supabaseQuery;
+    };
 
-      if (sortBy != null) {
-        switch (sortBy) {
-          case 'price_low':
-            orderColumn = 'price';
-            ascending = true;
-            break;
-          case 'price_high':
-            orderColumn = 'price';
-            ascending = false;
-            break;
-          case 'popular':
-          case 'recent':
-          default:
-            orderColumn = 'created_at';
-            ascending = false;
-            break;
-        }
+    String orderColumn = 'created_at';
+    bool ascending = false;
+
+    if (sortBy != null) {
+      switch (sortBy) {
+        case 'price_low':
+          orderColumn = 'price';
+          ascending = true;
+          break;
+        case 'price_high':
+          orderColumn = 'price';
+          ascending = false;
+          break;
+        case 'popular':
+        case 'recent':
+        default:
+          orderColumn = 'created_at';
+          ascending = false;
+          break;
       }
+    }
 
-      final response = await supabaseQuery
+    Future<List<ProductModel>> runQuery(bool includeSeller) async {
+      final response = await buildQuery(includeSeller)
           .order(orderColumn, ascending: ascending)
           .range(offset, offset + limit - 1);
 
-      return (response as List).map((item) {
-        return ProductModel.fromJson(item);
-      }).toList();
+      if (response is! List) return [];
+      final items = response.cast<Map<String, dynamic>>();
+      if (!includeSeller) await _attachSellerInfo(items);
+      return items.map(ProductModel.fromJson).toList();
+    }
+
+    try {
+      return await runQuery(true);
+    } on PostgrestException catch (e) {
+      if (_isMissingSellerRelationship(e)) {
+        print(
+          'Missing products -> users relationship, retrying searchProducts without join',
+        );
+        return await runQuery(false);
+      }
+      print('Error searching products: $e');
+      return [];
     } catch (e) {
       print('Error searching products: $e');
       return [];

@@ -34,10 +34,10 @@ export interface Category {
 }
 
 export enum ProductStatus {
-  ACTIVE = 'active',
-  SOLD = 'sold',
-  RESERVED = 'reserved',
-  HIDDEN = 'hidden',
+  ACTIVE = '판매중',
+  SOLD = '판매완료',
+  RESERVED = '예약중',
+  HIDDEN = '숨김',
 }
 
 export interface ResaleItem {

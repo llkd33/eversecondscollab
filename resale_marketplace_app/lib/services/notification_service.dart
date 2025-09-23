@@ -11,10 +11,10 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin _localNotifications = 
+  final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
-  
+
   String? _fcmToken;
   bool _isInitialized = false;
 
@@ -25,10 +25,10 @@ class NotificationService {
     try {
       // 로컬 알림 초기화
       await _initializeLocalNotifications();
-      
+
       // FCM 초기화
       await _initializeFCM();
-      
+
       _isInitialized = true;
       developer.log('NotificationService initialized successfully');
     } catch (error, stackTrace) {
@@ -43,13 +43,15 @@ class NotificationService {
 
   /// 로컬 알림 초기화
   Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-    
+
     const initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
@@ -107,7 +109,8 @@ class NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
 
     // 앱이 종료된 상태에서 알림으로 앱을 열었을 때
-    RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
+    RemoteMessage? initialMessage = await _firebaseMessaging
+        .getInitialMessage();
     if (initialMessage != null) {
       _handleBackgroundMessage(initialMessage);
     }
@@ -140,7 +143,8 @@ class NotificationService {
     for (final channel in channels) {
       await _localNotifications
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(channel);
     }
   }
@@ -148,7 +152,7 @@ class NotificationService {
   /// 포그라운드 메시지 처리
   void _handleForegroundMessage(RemoteMessage message) {
     developer.log('Received foreground message: ${message.messageId}');
-    
+
     // 로컬 알림으로 표시
     _showLocalNotification(message);
   }
@@ -156,7 +160,7 @@ class NotificationService {
   /// 백그라운드 메시지 처리
   void _handleBackgroundMessage(RemoteMessage message) {
     developer.log('Received background message: ${message.messageId}');
-    
+
     // 메시지 데이터에 따라 적절한 화면으로 이동
     _navigateFromNotification(message.data);
   }
@@ -164,7 +168,7 @@ class NotificationService {
   /// 알림 탭 처리
   void _onNotificationTapped(NotificationResponse response) {
     developer.log('Notification tapped: ${response.payload}');
-    
+
     if (response.payload != null) {
       final data = jsonDecode(response.payload!);
       _navigateFromNotification(data);
@@ -204,7 +208,7 @@ class NotificationService {
     if (notification == null) return;
 
     final channelId = _getChannelId(message.data['type']);
-    
+
     await _localNotifications.show(
       message.hashCode,
       notification.title,
@@ -258,14 +262,12 @@ class NotificationService {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      await Supabase.instance.client
-          .from('user_fcm_tokens')
-          .upsert({
-            'user_id': user.id,
-            'fcm_token': token,
-            'platform': defaultTargetPlatform.name,
-            'updated_at': DateTime.now().toIso8601String(),
-          });
+      await Supabase.instance.client.from('user_fcm_tokens').upsert({
+        'user_id': user.id,
+        'fcm_token': token,
+        'platform': defaultTargetPlatform.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
 
       developer.log('FCM token saved to server');
     } catch (error) {
@@ -330,10 +332,7 @@ class NotificationService {
       userId: userId,
       title: title,
       body: message,
-      data: {
-        'type': type ?? 'transaction_update',
-        'id': transactionId,
-      },
+      data: {'type': type ?? 'transaction_update', 'id': transactionId},
     );
   }
 
@@ -364,7 +363,7 @@ class NotificationService {
     Map<String, dynamic>? data,
   }) async {
     final id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    
+
     await _localNotifications.show(
       id,
       title,

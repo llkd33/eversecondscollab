@@ -47,36 +47,8 @@ void main() async {
       print('  - Path: ${uri.path}');
       print('  - Query: ${uri.query}');
       print('  - Fragment: ${uri.fragment}');
-      final hasOAuthParams =
-          uri.queryParameters.containsKey('code') ||
-          uri.fragment.contains('access_token') ||
-          uri.fragment.contains('error_description');
-
-      if (uri.scheme == 'resale.marketplace.app' &&
-          uri.host == 'auth-callback' &&
-          hasOAuthParams) {
-        print('🔐 OAuth 콜백 감지');
-
-        try {
-          await SupabaseConfig.client.auth.getSessionFromUrl(uri);
-          final newSession = SupabaseConfig.client.auth.currentSession;
-
-          if (newSession != null) {
-            print('✅ OAuth 세션 설정 완료: ${newSession.user?.id}');
-            print('  - Email: ${newSession.user?.email}');
-            print(
-              '  - Provider: ${newSession.user?.appMetadata['provider']}',
-            );
-          } else {
-            print('⚠️ OAuth 콜백 처리 후에도 세션이 비어있습니다.');
-          }
-        } on AuthException catch (e) {
-          print('❌ OAuth 세션 처리 실패(AuthException): ${e.message}');
-        } catch (e, stackTrace) {
-          print('❌ OAuth 세션 처리 중 예기치 않은 오류: $e');
-          print('  - Stack trace: $stackTrace');
-        }
-      }
+      
+      await _handleOAuthDeepLink(uri);
     });
     
     // 앱이 종료된 상태에서 딥링크로 시작될 때
@@ -87,32 +59,7 @@ void main() async {
       print('  - Host: ${initialUri.host}');
       print('  - Fragment: ${initialUri.fragment}');
       
-      final hasOAuthParams =
-          initialUri.queryParameters.containsKey('code') ||
-          initialUri.fragment.contains('access_token') ||
-          initialUri.fragment.contains('error_description');
-
-      if (initialUri.scheme == 'resale.marketplace.app' &&
-          initialUri.host == 'auth-callback' &&
-          hasOAuthParams) {
-        print('🔐 초기 OAuth 콜백 감지');
-
-        try {
-          await SupabaseConfig.client.auth.getSessionFromUrl(initialUri);
-          final session = SupabaseConfig.client.auth.currentSession;
-
-          if (session != null) {
-            print('✅ 초기 OAuth 세션 설정 완료: ${session.user?.id}');
-          } else {
-            print('⚠️ 초기 OAuth 세션 설정 실패');
-          }
-        } on AuthException catch (e) {
-          print('❌ 초기 OAuth 처리 실패(AuthException): ${e.message}');
-        } catch (e, stackTrace) {
-          print('❌ 초기 OAuth 처리 중 예기치 않은 오류: $e');
-          print('  - Stack trace: $stackTrace');
-        }
-      }
+      await _handleOAuthDeepLink(initialUri);
     }
   }
 
@@ -164,6 +111,80 @@ void main() async {
   }
 
   runApp(const MyApp());
+}
+
+/// OAuth 딥링크 처리 함수
+Future<void> _handleOAuthDeepLink(Uri uri) async {
+  // OAuth 파라미터 체크 (fragment나 query 모두 체크)
+  final hasOAuthParams =
+      uri.queryParameters.containsKey('code') ||
+      uri.fragment.contains('access_token') ||
+      uri.fragment.contains('error_description') ||
+      uri.queryParameters.containsKey('error') ||
+      uri.fragment.contains('error=');
+
+  if (uri.scheme == 'resale.marketplace.app' &&
+      uri.host == 'auth-callback' &&
+      hasOAuthParams) {
+    print('🔐 OAuth 콜백 감지');
+
+    // 에러 체크 (query parameters와 fragment 모두 확인)
+    String? error = uri.queryParameters['error'];
+    String? errorCode = uri.queryParameters['error_code'];
+    String? errorDescription = uri.queryParameters['error_description'];
+    
+    // Fragment에서도 에러 확인 (Supabase가 fragment에 에러를 넣는 경우도 있음)
+    if (error == null && uri.fragment.contains('error=')) {
+      final fragmentParams = Uri.splitQueryString(uri.fragment);
+      error = fragmentParams['error'];
+      errorCode = fragmentParams['error_code'];
+      errorDescription = fragmentParams['error_description'];
+    }
+    
+    if (error != null) {
+      print('❌ OAuth 에러: $error');
+      print('  - Error Code: $errorCode');
+      print('  - Description: $errorDescription');
+      
+      // Database error나 server_error의 경우 특별 처리를 하지 않음
+      // Supabase SDK가 이를 처리하도록 함
+      if (error == 'server_error' && errorCode == 'unexpected_failure') {
+        print('⚠️ 서버 측 프로필 생성 오류 감지. Supabase SDK가 처리하도록 계속 진행...');
+        // 에러가 있어도 getSessionFromUrl을 호출하여 SDK가 적절히 처리하도록 함
+      } else {
+        // 다른 에러의 경우 처리 중단
+        return;
+      }
+    }
+
+    try {
+      print('🔄 OAuth 세션 처리 시작...');
+      await SupabaseConfig.client.auth.getSessionFromUrl(uri);
+      final newSession = SupabaseConfig.client.auth.currentSession;
+
+      if (newSession != null) {
+        print('✅ OAuth 세션 설정 완료: ${newSession.user?.id}');
+        print('  - Email: ${newSession.user?.email}');
+        print('  - Provider: ${newSession.user?.appMetadata['provider']}');
+        
+        // 카카오 OAuth의 경우 추가 로깅
+        if (newSession.user?.appMetadata['provider'] == 'kakao') {
+          print('🔐 카카오 OAuth 세션 설정 완료');
+          print('  - User metadata: ${newSession.user?.userMetadata}');
+        }
+      } else {
+        print('⚠️ OAuth 콜백 처리 후에도 세션이 비어있습니다.');
+      }
+    } on AuthException catch (e) {
+      print('❌ OAuth 세션 처리 실패(AuthException): ${e.message}');
+      print('  - Code: ${e.statusCode}');
+      print('  - Error: ${e.code}');
+      // AuthException은 여기서 처리하지 않고 AuthProvider가 처리하도록 함
+    } catch (e, stackTrace) {
+      print('❌ OAuth 세션 처리 중 예기치 않은 오류: $e');
+      print('  - Stack trace: $stackTrace');
+    }
+  }
 }
 
 class MyApp extends StatelessWidget {

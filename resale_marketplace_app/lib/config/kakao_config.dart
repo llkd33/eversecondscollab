@@ -94,9 +94,11 @@ class KakaoConfig {
   }
 
   static String buildNativeRedirectUri({String? redirectPath}) {
-    // 모바일 환경에서는 딥링크 직접 사용
+    // 모바일 환경에서는 항상 동일한 딥링크 사용
+    // Supabase가 OAuth 성공 후 이 딥링크로 리다이렉트하도록 설정
     if (!kIsWeb) {
       // 안드로이드와 iOS 모두 딥링크로 처리
+      // redirectPath는 세션 설정 후 앱 내부에서 처리
       return _fallbackNativeRedirectUri;
     }
     

@@ -7,7 +7,10 @@ import '../models/message_model.dart';
 import '../utils/uuid.dart';
 
 class ChatService {
-  final SupabaseClient _client = SupabaseConfig.client;
+  ChatService({SupabaseClient? client})
+    : _client = client ?? SupabaseConfig.client;
+
+  final SupabaseClient _client;
   final Map<String, StreamSubscription> _subscriptions = {};
   static bool _isGetUserChatsRpcAvailable = true;
   static bool _isGetChatMessagesRpcAvailable = true;

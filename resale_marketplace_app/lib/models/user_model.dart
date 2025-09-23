@@ -53,18 +53,46 @@ class UserModel {
 
   // JSON에서 User 객체 생성
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    final resolvedName = _stringValue(json['name'])?.trim();
+    final resolvedPhone = _stringValue(json['phone']);
+
     return UserModel(
-      id: json['id'],
-      email: json['email'],
-      name: json['name'],
-      phone: json['phone'],
-      isVerified: json['is_verified'] ?? false,
-      profileImage: json['profile_image'],
-      role: json['role'] ?? '일반',
-      shopId: json['shop_id'],
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
+      id: _stringValue(json['id']) ?? '',
+      email: _stringValue(json['email']),
+      name: (resolvedName == null || resolvedName.isEmpty)
+          ? '사용자'
+          : resolvedName,
+      phone: resolvedPhone ?? '',
+      isVerified: _boolValue(json['is_verified']) ?? false,
+      profileImage: _stringValue(json['profile_image']),
+      role: _stringValue(json['role']) ?? '일반',
+      shopId: _stringValue(json['shop_id']),
+      createdAt: _parseDate(json['created_at']),
+      updatedAt: _parseDate(json['updated_at']),
     );
+  }
+
+  static DateTime _parseDate(dynamic value) {
+    if (value is DateTime) return value;
+    if (value is String && value.isNotEmpty) {
+      return DateTime.parse(value);
+    }
+    return DateTime.now();
+  }
+
+  static String? _stringValue(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    return value.toString();
+  }
+
+  static bool? _boolValue(dynamic value) {
+    if (value is bool) return value;
+    if (value is String) {
+      if (value.toLowerCase() == 'true') return true;
+      if (value.toLowerCase() == 'false') return false;
+    }
+    return null;
   }
 
   // User 객체를 JSON으로 변환
@@ -85,17 +113,25 @@ class UserModel {
 
   // Supabase Auth User에서 UserModel 생성 헬퍼
   static UserModel fromSupabaseUser(supabase.User user, Map<String, dynamic> metadata) {
+    final rawName = metadata['name'];
+    final resolvedName = rawName is String ? rawName.trim() : _stringValue(rawName) ?? '';
+    final fallbackName = '사용자${user.id.replaceAll('-', '').substring(0, 8)}';
+    final name = resolvedName.isEmpty ? fallbackName : resolvedName;
+    final resolvedPhone = _stringValue(metadata['phone']) ?? '';
+    final createdAt = _parseDate(metadata['created_at']);
+    final updatedAt = _parseDate(metadata['updated_at']);
+
     return UserModel(
       id: user.id,
       email: user.email ?? '',
-      name: metadata['name'] ?? '',
-      phone: metadata['phone'] ?? '',
-      isVerified: metadata['is_verified'] ?? false,
-      profileImage: metadata['profile_image'],
-      role: metadata['role'] ?? '일반',
-      shopId: metadata['shop_id'],
-      createdAt: DateTime.parse(metadata['created_at'] ?? DateTime.now().toIso8601String()),
-      updatedAt: DateTime.parse(metadata['updated_at'] ?? DateTime.now().toIso8601String()),
+      name: name,
+      phone: resolvedPhone,
+      isVerified: _boolValue(metadata['is_verified']) ?? false,
+      profileImage: _stringValue(metadata['profile_image']),
+      role: _stringValue(metadata['role']) ?? '일반',
+      shopId: _stringValue(metadata['shop_id']),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 

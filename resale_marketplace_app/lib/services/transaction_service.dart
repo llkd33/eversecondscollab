@@ -36,27 +36,31 @@ class TransactionService {
         chatId = null;
       }
       // 1. 거래 데이터 생성
-      final response = await _client.from('transactions').insert({
-        'product_id': productId,
-        'buyer_id': buyerId,
-        'seller_id': sellerId,
-        'price': price,
-        'resale_fee': resaleFee,
-        'reseller_id': resellerId,
-        'status': TransactionStatus.ongoing,
-        'chat_id': chatId,
-        'transaction_type': transactionType,
-      }).select().single();
+      final response = await _client
+          .from('transactions')
+          .insert({
+            'product_id': productId,
+            'buyer_id': buyerId,
+            'seller_id': sellerId,
+            'price': price,
+            'resale_fee': resaleFee,
+            'reseller_id': resellerId,
+            'status': TransactionStatus.ongoing,
+            'chat_id': chatId,
+            'transaction_type': transactionType,
+          })
+          .select()
+          .single();
 
       final transaction = TransactionModel.fromJson(response);
 
-      // 2. 상품 상태 업데이트 (판매중 → 거래중)
+      // 2. 상품 상태 업데이트 (판매중 -> 거래중)
       await _updateProductStatus(productId, '거래중');
 
       // 3. 채팅방에 시스템 메시지 전송
       if (chatId != null) {
         String message = '📝 거래가 시작되었습니다.\n';
-        
+
         if (transactionType == TransactionType.safe) {
           message += '🔒 안전거래로 진행됩니다.\n';
           message += '구매자님께서 결제를 완료하시면 판매자님께서 상품을 발송해주세요.\n';
@@ -71,10 +75,7 @@ class TransactionService {
           message += '판매자 수령액: ${_formatPrice(price - resaleFee)}';
         }
 
-        await _chatService.sendSystemMessage(
-          chatId: chatId,
-          content: message,
-        );
+        await _chatService.sendSystemMessage(chatId: chatId, content: message);
       }
 
       return transaction;
@@ -121,7 +122,7 @@ class TransactionService {
           .single();
 
       final transaction = TransactionModel.fromJson(response);
-      
+
       // 조인된 정보 매핑
       final product = response['products'];
       final buyer = response['buyer'];
@@ -130,8 +131,9 @@ class TransactionService {
 
       return transaction.copyWith(
         productTitle: product?['title'],
-        productImage: product?['images']?.isNotEmpty == true 
-            ? product!['images'][0] : null,
+        productImage: product?['images']?.isNotEmpty == true
+            ? product!['images'][0]
+            : null,
         buyerName: buyer?['name'],
         sellerName: seller?['name'],
         resellerName: reseller?['name'],
@@ -154,9 +156,7 @@ class TransactionService {
         if (userId == null) return [];
       }
 
-      var query = _client
-          .from('transactions')
-          .select('''
+      var query = _client.from('transactions').select('''
             *,
             products!product_id (
               id,
@@ -190,7 +190,9 @@ class TransactionService {
         query = query.eq('reseller_id', userId);
       } else {
         // 모든 관련 거래 (구매자, 판매자, 대신판매자)
-        query = query.or('buyer_id.eq.$userId,seller_id.eq.$userId,reseller_id.eq.$userId');
+        query = query.or(
+          'buyer_id.eq.$userId,seller_id.eq.$userId,reseller_id.eq.$userId',
+        );
       }
 
       // 상태별 필터링
@@ -202,7 +204,7 @@ class TransactionService {
 
       return (response as List).map((item) {
         final transaction = TransactionModel.fromJson(item);
-        
+
         // 조인된 정보 매핑
         final product = item['products'];
         final buyer = item['buyer'];
@@ -211,8 +213,9 @@ class TransactionService {
 
         return transaction.copyWith(
           productTitle: product?['title'],
-          productImage: product?['images']?.isNotEmpty == true 
-              ? product!['images'][0] : null,
+          productImage: product?['images']?.isNotEmpty == true
+              ? product!['images'][0]
+              : null,
           buyerName: buyer?['name'],
           sellerName: seller?['name'],
           resellerName: reseller?['name'],
@@ -260,7 +263,7 @@ class TransactionService {
       // 채팅방에 시스템 메시지 전송
       if (transaction.chatId != null) {
         String message = '';
-        
+
         if (newStatus == TransactionStatus.completed) {
           message = '✅ 거래가 완료되었습니다.\n';
           message += '구매해주셔서 감사합니다.\n';
@@ -289,7 +292,7 @@ class TransactionService {
 
   // 안전거래 프로세스
 
-  // 1. 결제 확인 (구매자 → 플랫폼)
+  // 1. 결제 확인 (구매자 -> 플랫폼)
   Future<bool> confirmPayment({
     required String transactionId,
     required String paymentMethod,
@@ -327,26 +330,30 @@ class TransactionService {
     }
   }
 
-  // 2. 배송 시작 (판매자 → 구매자)
+  // 2. 배송 시작 (판매자 -> 구매자)
   Future<bool> startShipping({
     required String transactionId,
     required String trackingNumber,
     String? courier, // 택배사
   }) async {
     try {
-      await _client.from('transactions').update({
-        'shipping_status': '배송중',
-        'tracking_number': trackingNumber,
-        'courier': courier,
-        'shipped_at': DateTime.now().toIso8601String(),
-      }).eq('id', transactionId);
+      await _client
+          .from('transactions')
+          .update({
+            'shipping_status': '배송중',
+            'tracking_number': trackingNumber,
+            'courier': courier,
+            'shipped_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', transactionId);
 
       // 채팅방에 알림
       final transaction = await getTransactionById(transactionId);
       if (transaction?.chatId != null) {
         await _chatService.sendSystemMessage(
           chatId: transaction!.chatId!,
-          content: '📦 상품이 발송되었습니다.\n'
+          content:
+              '📦 상품이 발송되었습니다.\n'
               '운송장 번호: $trackingNumber\n'
               '${courier != null ? '택배사: $courier' : ''}',
         );
@@ -360,9 +367,7 @@ class TransactionService {
   }
 
   // 3. 수령 확인 (구매자)
-  Future<bool> confirmReceipt({
-    required String transactionId,
-  }) async {
+  Future<bool> confirmReceipt({required String transactionId}) async {
     try {
       // 거래 완료 처리
       await updateTransactionStatus(
@@ -411,9 +416,10 @@ class TransactionService {
       if (transaction.chatId != null) {
         String message = '💰 정산이 완료되었습니다.\n';
         message += '판매자 수령액: ${_formatPrice(sellerAmount)}';
-        
+
         if (transaction.isResaleTransaction) {
-          message += '\n대신판매 수수료: ${_formatPrice(transaction.resellerCommission)}';
+          message +=
+              '\n대신판매 수수료: ${_formatPrice(transaction.resellerCommission)}';
         }
 
         await _chatService.sendSystemMessage(
@@ -469,9 +475,10 @@ class TransactionService {
         'buy_count': buyCount.count ?? 0,
         'sell_count': sellCount.count ?? 0,
         'resell_count': resellCount.count ?? 0,
-        'total_count': (buyCount.count ?? 0) + 
-                      (sellCount.count ?? 0) + 
-                      (resellCount.count ?? 0),
+        'total_count':
+            (buyCount.count ?? 0) +
+            (sellCount.count ?? 0) +
+            (resellCount.count ?? 0),
       };
     } catch (e) {
       print('Error getting transaction stats: $e');
@@ -486,9 +493,6 @@ class TransactionService {
 
   // 가격 포맷팅 헬퍼
   String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}원';
+    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   }
 }

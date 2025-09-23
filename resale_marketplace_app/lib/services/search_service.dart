@@ -1,13 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product_model.dart';
 
-enum SortOption {
-  latest,
-  priceAsc,
-  priceDesc,
-  popular,
-  distance,
-}
+enum SortOption { latest, priceAsc, priceDesc, popular, distance }
 
 class SearchFilter {
   final String? category;
@@ -81,14 +75,14 @@ class SearchService {
   }) async {
     try {
       final searchFilter = filter ?? const SearchFilter();
-      
+
       // 기본 쿼리 구성
       var queryBuilder = _supabase.from('products').select('*');
 
       // 검색어 필터링
       if (query != null && query.isNotEmpty) {
         queryBuilder = queryBuilder.or(
-          'title.ilike.%$query%,description.ilike.%$query%,category.ilike.%$query%'
+          'title.ilike.%$query%,description.ilike.%$query%,category.ilike.%$query%',
         );
       }
 
@@ -112,7 +106,10 @@ class SearchService {
 
       // 대신팔기 가능 여부
       if (searchFilter.isResaleEnabled != null) {
-        queryBuilder = queryBuilder.eq('is_resale_enabled', searchFilter.isResaleEnabled!);
+        queryBuilder = queryBuilder.eq(
+          'is_resale_enabled',
+          searchFilter.isResaleEnabled!,
+        );
       }
 
       // 판매중인 상품만
@@ -120,11 +117,14 @@ class SearchService {
 
       // 정렬 및 페이징을 포함한 최종 쿼리 실행
       final offset = (searchFilter.page - 1) * searchFilter.limit;
-      
+
       final response = await queryBuilder
-          .order(_getSortColumn(searchFilter.sortBy), ascending: _getSortAscending(searchFilter.sortBy))
+          .order(
+            _getSortColumn(searchFilter.sortBy),
+            ascending: _getSortAscending(searchFilter.sortBy),
+          )
           .range(offset, offset + searchFilter.limit - 1);
-      
+
       final products = (response as List)
           .map((json) => ProductModel.fromJson(json))
           .toList();
@@ -164,15 +164,7 @@ class SearchService {
 
   /// 카테고리 목록 조회
   Future<List<String>> getCategories() async {
-    return [
-      '전자기기',
-      '의류',
-      '도서',
-      '생활용품',
-      '스포츠',
-      '뷰티',
-      '기타',
-    ];
+    return ['전자기기', '의류', '도서', '생활용품', '스포츠', '뷰티', '기타'];
   }
 
   /// 지역 목록 조회

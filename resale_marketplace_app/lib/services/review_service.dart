@@ -36,15 +36,19 @@ class ReviewService {
         throw Exception('이미 해당 거래에 대한 리뷰를 작성하셨습니다.');
       }
 
-      final response = await _client.from('reviews').insert({
-        'reviewer_id': reviewerId,
-        'reviewed_user_id': reviewedUserId,
-        'transaction_id': transactionId,
-        'rating': rating,
-        'comment': content,
-        'tags': tags ?? [],
-        'images': images ?? [],
-      }).select().single();
+      final response = await _client
+          .from('reviews')
+          .insert({
+            'reviewer_id': reviewerId,
+            'reviewed_user_id': reviewedUserId,
+            'transaction_id': transactionId,
+            'rating': rating,
+            'comment': content,
+            'tags': tags ?? [],
+            'images': images ?? [],
+          })
+          .select()
+          .single();
 
       return ReviewModel.fromJson(response);
     } catch (e) {
@@ -75,7 +79,7 @@ class ReviewService {
           .single();
 
       final review = ReviewModel.fromJson(response);
-      
+
       // 조인된 정보 매핑
       final reviewer = response['reviewer'];
       final reviewedUser = response['reviewed_user'];
@@ -117,7 +121,7 @@ class ReviewService {
 
       return (response as List).map((item) {
         final review = ReviewModel.fromJson(item);
-        
+
         // 조인된 정보 매핑
         final reviewer = item['reviewer'];
         final reviewedUser = item['reviewed_user'];
@@ -160,7 +164,7 @@ class ReviewService {
 
       return (response as List).map((item) {
         final review = ReviewModel.fromJson(item);
-        
+
         // 조인된 정보 매핑
         final reviewer = item['reviewer'];
         final reviewedUser = item['reviewed_user'];
@@ -202,7 +206,7 @@ class ReviewService {
 
       return (response as List).map((item) {
         final review = ReviewModel.fromJson(item);
-        
+
         // 조인된 정보 매핑
         final reviewer = item['reviewer'];
         final reviewedUser = item['reviewed_user'];
@@ -235,10 +239,7 @@ class ReviewService {
 
       if (updates.isEmpty) return true;
 
-      await _client
-          .from('reviews')
-          .update(updates)
-          .eq('id', reviewId);
+      await _client.from('reviews').update(updates).eq('id', reviewId);
 
       return true;
     } catch (e) {
@@ -250,10 +251,7 @@ class ReviewService {
   // 리뷰 삭제
   Future<bool> deleteReview(String reviewId) async {
     try {
-      await _client
-          .from('reviews')
-          .delete()
-          .eq('id', reviewId);
+      await _client.from('reviews').delete().eq('id', reviewId);
 
       return true;
     } catch (e) {
@@ -263,26 +261,30 @@ class ReviewService {
   }
 
   // 리뷰 이미지 업로드
-  Future<List<String>> uploadReviewImages(List<File> imageFiles, String userId) async {
+  Future<List<String>> uploadReviewImages(
+    List<File> imageFiles,
+    String userId,
+  ) async {
     final uploadedUrls = <String>[];
-    
+
     try {
       for (int i = 0; i < imageFiles.length; i++) {
         final file = imageFiles[i];
-        final fileName = 'review_${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
-        
+        final fileName =
+            'review_${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+
         final bytes = await file.readAsBytes();
         await _client.storage
             .from('review-images')
             .uploadBinary(fileName, bytes);
-        
+
         final url = _client.storage
             .from('review-images')
             .getPublicUrl(fileName);
-        
+
         uploadedUrls.add(url);
       }
-      
+
       return uploadedUrls;
     } catch (e) {
       print('Error uploading review images: $e');
@@ -298,9 +300,7 @@ class ReviewService {
   // 리뷰 이미지 삭제
   Future<bool> deleteReviewImage(String fileName) async {
     try {
-      await _client.storage
-          .from('review-images')
-          .remove([fileName]);
+      await _client.storage.from('review-images').remove([fileName]);
 
       return true;
     } catch (e) {
@@ -369,11 +369,11 @@ class ReviewService {
           .single();
 
       final reviewableUsers = <Map<String, dynamic>>[];
-      
+
       final buyerId = transactionResponse['buyer_id'];
       final sellerId = transactionResponse['seller_id'];
       final resellerId = transactionResponse['reseller_id'];
-      
+
       final buyer = transactionResponse['buyer'];
       final seller = transactionResponse['seller'];
       final reseller = transactionResponse['reseller'];
@@ -399,7 +399,7 @@ class ReviewService {
           });
         }
       }
-      
+
       // 현재 사용자가 판매자인 경우
       if (currentUserId == sellerId) {
         // 구매자에게 리뷰 가능
@@ -421,7 +421,7 @@ class ReviewService {
           });
         }
       }
-      
+
       // 현재 사용자가 대신판매자인 경우
       if (currentUserId == resellerId) {
         // 구매자에게 리뷰 가능
@@ -482,7 +482,7 @@ class ReviewService {
 
       return (response as List).map((item) {
         final review = ReviewModel.fromJson(item);
-        
+
         // 조인된 정보 매핑
         final reviewer = item['reviewer'];
         final reviewedUser = item['reviewed_user'];

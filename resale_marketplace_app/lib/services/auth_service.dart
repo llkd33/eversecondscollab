@@ -13,7 +13,10 @@ import 'shop_service.dart';
 
 /// 인증 서비스 - 로그인, 로그아웃, 회원가입 및 인증 상태 관리
 class AuthService {
-  final _supabase = Supabase.instance.client;
+  AuthService({SupabaseClient? client})
+    : _supabase = client ?? Supabase.instance.client;
+
+  final SupabaseClient _supabase;
   final _cache = ApiCache();
 
   /// Phone Auth 설정 상태 확인
@@ -251,9 +254,12 @@ class AuthService {
 
       if (response == null) {
         print('⚠️ Auth 사용자는 있지만 users 테이블에 정보가 없습니다. 프로필을 자동으로 생성합니다.');
+        print('📝 Current user metadata: ${currentUser!.userMetadata}');
 
         final created = await _createUserFromAuth();
         if (created) {
+          // 생성 후 즉시 다시 조회
+          await Future.delayed(const Duration(milliseconds: 500)); // DB 반영 대기
           final retry = await _supabase
               .from('users')
               .select()
@@ -261,11 +267,13 @@ class AuthService {
               .maybeSingle();
 
           if (retry != null) {
+            print('✅ 프로필 생성 및 조회 성공');
             return UserModel.fromJson(retry);
           }
         }
 
         // 최후의 수단으로 Auth 사용자 정보를 기반으로 기본 프로필 생성
+        print('⚠️ DB에 프로필 생성 실패, 메모리에서 임시 프로필 사용');
         final fallbackUser = _buildUserPayloadFromAuth(currentUser!);
         return UserModel.fromJson(fallbackUser);
       }
@@ -273,11 +281,86 @@ class AuthService {
       return UserModel.fromJson(response);
     } catch (e) {
       print('Error fetching user profile: $e');
+      // 에러가 발생해도 Auth 정보로 기본 프로필 생성 시도
+      if (currentUser != null) {
+        final fallbackUser = _buildUserPayloadFromAuth(currentUser!);
+        return UserModel.fromJson(fallbackUser);
+      }
       return null;
     }
   }
 
-  /// Auth 사용자 정보를 기반으로 users 테이블에 사용자 생성
+  /// 사용자 프로필이 없으면 생성 (재시도 로직 포함)
+  Future<bool> ensureUserProfile({int maxRetries = 3}) async {
+    if (!isAuthenticated) {
+      print('❌ ensureUserProfile: Not authenticated');
+      return false;
+    }
+
+    print('🔍 ensureUserProfile: Checking for user ${currentUser!.id}');
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // 프로필이 이미 있는지 확인
+        final existing = await _supabase
+            .from('users')
+            .select()
+            .eq('id', currentUser!.id)
+            .maybeSingle();
+
+        if (existing != null) {
+          print('✅ Profile already exists (attempt $attempt)');
+          return true;
+        }
+
+        print(
+          '⚠️ Profile not found, creating new profile (attempt $attempt)...',
+        );
+
+        // 프로필 생성
+        final created = await _createUserFromAuth();
+        if (created) {
+          print('✅ Profile creation successful (attempt $attempt)');
+
+          // 생성 후 검증을 위해 잠시 대기
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+
+          // 생성된 프로필 재확인
+          final verification = await _supabase
+              .from('users')
+              .select()
+              .eq('id', currentUser!.id)
+              .maybeSingle();
+
+          if (verification != null) {
+            print('✅ Profile creation verified');
+            return true;
+          } else {
+            print('⚠️ Profile creation not verified, will retry...');
+          }
+        } else {
+          print('❌ Profile creation failed (attempt $attempt)');
+        }
+
+        // 마지막 시도가 아니면 잠시 대기 후 재시도
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(seconds: attempt));
+        }
+      } catch (e) {
+        print('❌ ensureUserProfile error (attempt $attempt): $e');
+
+        // 마지막 시도가 아니면 잠시 대기 후 재시도
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(seconds: attempt));
+        }
+      }
+    }
+
+    print('❌ All profile creation attempts failed');
+    return false;
+  }
+
+  /// Auth 사용자 정보를 기반으로 users 테이블에 사용자 생성 (개선된 버전)
   Future<bool> _createUserFromAuth() async {
     if (!isAuthenticated) return false;
 
@@ -291,44 +374,151 @@ class AuthService {
     try {
       userPayload = _buildUserPayloadFromAuth(authUser);
 
-      await _supabase.from('users').upsert(userPayload);
+      // 카카오 OAuth 사용자의 경우 추가 검증
+      final provider = authUser.appMetadata['provider'] as String?;
+      if (provider == 'kakao') {
+        print('🔐 카카오 OAuth 사용자 프로필 생성 중...');
+
+        // 카카오 사용자 정보 검증
+        if (!_validateKakaoUserData(userPayload)) {
+          print('❌ 카카오 사용자 데이터 검증 실패');
+          return false;
+        }
+      }
+
+      // RPC 함수를 통한 사용자 생성 시도 (RLS 우회)
+      try {
+        final rpcResult = await _supabase
+            .rpc(
+              'create_user_profile_safe',
+              params: {
+                'user_id': authUser.id,
+                'user_email': userPayload['email'],
+                'user_name': userPayload['name'],
+                'user_phone': userPayload['phone'], // null 값 그대로 전달
+                'user_profile_image': userPayload['profile_image'],
+                'user_role': userPayload['role'] ?? '일반',
+                'user_is_verified': userPayload['is_verified'] ?? true,
+              },
+            )
+            .catchError((error) {
+              print('❌ RPC 함수 호출 에러: $error');
+              // RPC 함수 호출 실패 시 null 반환
+              return null;
+            });
+
+        if (rpcResult != null) {
+          if (rpcResult is Map && rpcResult['success'] == true) {
+            print('✅ RPC를 통한 사용자 생성 완료: ${authUser.id}');
+            print('  - Action: ${rpcResult['action']}');
+            print('  - Message: ${rpcResult['message']}');
+          } else if (rpcResult is Map && rpcResult['success'] == false) {
+            print('❌ RPC 함수 실행 실패: ${rpcResult['message'] ?? 'Unknown error'}');
+            print(
+              '  - Error Detail: ${rpcResult['error_detail'] ?? 'No details'}',
+            );
+            throw Exception(rpcResult['message'] ?? 'RPC 함수 실행 실패');
+          } else {
+            print('⚠️ RPC 함수가 예상치 못한 결과 반환: $rpcResult');
+            throw Exception('RPC 함수가 예상치 못한 결과를 반환했습니다');
+          }
+        } else {
+          throw Exception('RPC 함수 호출 실패');
+        }
+      } catch (rpcError) {
+        print('⚠️ RPC 함수 사용 실패, 직접 삽입 시도: $rpcError');
+
+        // RPC 함수가 없거나 실패하면 직접 삽입 시도
+        try {
+          await _supabase.from('users').upsert(userPayload);
+          print('✅ 직접 삽입을 통한 사용자 생성 완료: ${authUser.id}');
+
+          // 샵 생성도 수동으로 처리
+          await _ensureShopAfterProfileSync(
+            authUser.id,
+            userPayload['name'] as String?,
+          );
+        } catch (directError) {
+          print('❌ 직접 삽입도 실패: $directError');
+          // 최종 실패 시 false 반환하지만 에러는 throw하지 않음 (사용자가 로그인 자체는 성공했으므로)
+          return false;
+        }
+      }
+
+      // 샵 생성 확인
       await _ensureShopAfterProfileSync(
         authUser.id,
         userPayload['name'] as String?,
       );
-      print('✅ Auth 기반 사용자 생성/동기화 완료: ${authUser.id}');
+
       return true;
     } on PostgrestException catch (error) {
-      final isShareUrlConflict =
-          error.code == '23505' &&
-          (error.message ?? '').contains('shops_share_url_key');
-
-      if (isShareUrlConflict) {
-        final existing = await _supabase
-            .from('users')
-            .select()
-            .eq('id', authUser.id)
-            .maybeSingle();
-
-        if (existing != null) {
-          await _ensureShopAfterProfileSync(
-            authUser.id,
-            (existing['name'] as String?) ?? userPayload?['name'] as String?,
-          );
-
-          print(
-            '⚠️ Auth 기반 사용자 생성 시 기존 share_url 충돌이 감지되었지만 기존 프로필을 재사용합니다: ${authUser.id}',
-          );
-          return true;
-        }
-      }
-
-      print('❌ Auth 기반 사용자 생성 실패: $error');
-      return false;
+      return await _handlePostgrestError(error, authUser, userPayload);
     } catch (e) {
       print('❌ Auth 기반 사용자 생성 실패: $e');
       return false;
     }
+  }
+
+  /// 카카오 사용자 데이터 검증
+  bool _validateKakaoUserData(Map<String, dynamic> userPayload) {
+    final name = userPayload['name'] as String?;
+    final email = userPayload['email'] as String?;
+
+    if (name == null || name.isEmpty) {
+      print('❌ 카카오 사용자 이름이 없습니다');
+      return false;
+    }
+
+    // 이메일은 선택사항이지만 있으면 검증
+    if (email != null && email.isNotEmpty && !email.contains('@')) {
+      print('❌ 카카오 사용자 이메일 형식이 잘못되었습니다');
+      return false;
+    }
+
+    return true;
+  }
+
+  /// PostgrestException 처리
+  Future<bool> _handlePostgrestError(
+    PostgrestException error,
+    User authUser,
+    Map<String, dynamic>? userPayload,
+  ) async {
+    final isShareUrlConflict =
+        error.code == '23505' &&
+        (error.message ?? '').contains('shops_share_url_key');
+
+    final isEmailConflict =
+        error.code == '23505' &&
+        (error.message ?? '').contains('users_email_key');
+
+    final isPhoneConflict =
+        error.code == '23505' &&
+        (error.message ?? '').contains('users_phone_key');
+
+    if (isShareUrlConflict || isEmailConflict || isPhoneConflict) {
+      print('⚠️ 중복 데이터 감지, 기존 프로필 확인 중...');
+
+      final existing = await _supabase
+          .from('users')
+          .select()
+          .eq('id', authUser.id)
+          .maybeSingle();
+
+      if (existing != null) {
+        await _ensureShopAfterProfileSync(
+          authUser.id,
+          (existing['name'] as String?) ?? userPayload?['name'] as String?,
+        );
+
+        print('✅ 기존 프로필 재사용: ${authUser.id}');
+        return true;
+      }
+    }
+
+    print('❌ PostgrestException: ${error.code} - ${error.message}');
+    return false;
   }
 
   Future<void> _ensureShopAfterProfileSync(
@@ -348,16 +538,120 @@ class AuthService {
   }
 
   Map<String, dynamic> _buildUserPayloadFromAuth(User user) {
+    print('📝 Building user payload from auth...');
+    print('  - User ID: ${user.id}');
+    print('  - User Email: ${user.email}');
+    print('  - App Metadata: ${user.appMetadata}');
+    print('  - User Metadata: ${user.userMetadata}');
+
     final metadata = user.userMetadata ?? <String, dynamic>{};
+    final provider = user.appMetadata['provider'] as String?;
+
+    // 카카오 OAuth에서 온 데이터 처리
+    if (provider == 'kakao') {
+      return _buildKakaoUserPayload(user, metadata);
+    }
+
+    // 기타 OAuth 또는 일반 사용자 처리
+    return _buildGeneralUserPayload(user, metadata);
+  }
+
+  /// 카카오 OAuth 사용자 데이터 처리
+  Map<String, dynamic> _buildKakaoUserPayload(
+    User user,
+    Map<String, dynamic> metadata,
+  ) {
+    print('🔐 카카오 OAuth 사용자 데이터 처리 중...');
+
+    // 카카오 계정 정보 추출
+    final kakaoAccount = metadata['kakao_account'] ?? {};
+    final kakaoProfile = kakaoAccount['profile'] ?? {};
+
+    print('  - Kakao Account: $kakaoAccount');
+    print('  - Kakao Profile: $kakaoProfile');
+
+    // 이메일 처리 (카카오 계정 이메일 우선)
+    String? finalEmail = kakaoAccount['email'] as String?;
+    if (finalEmail == null || finalEmail.isEmpty) {
+      finalEmail = metadata['email'] as String?;
+    }
+    if (finalEmail == null || finalEmail.isEmpty) {
+      finalEmail = user.email;
+    }
+
+    // 닉네임 처리 (카카오 프로필 닉네임 우선)
+    String? finalName = kakaoProfile['nickname'] as String?;
+    if (finalName == null || finalName.isEmpty) {
+      finalName = metadata['name'] as String?;
+    }
+    if (finalName == null || finalName.isEmpty) {
+      finalName = metadata['full_name'] as String?;
+    }
+    if (finalName == null || finalName.isEmpty) {
+      // 이메일에서 이름 추출 시도
+      if (finalEmail != null && finalEmail.contains('@')) {
+        finalName = finalEmail.split('@').first;
+      } else {
+        finalName = '카카오사용자${user.id.substring(0, 8)}';
+      }
+    }
+
+    // 프로필 이미지 처리
+    String? profileImage = kakaoProfile['profile_image_url'] as String?;
+    if (profileImage == null || profileImage.isEmpty) {
+      profileImage = kakaoProfile['thumbnail_image_url'] as String?;
+    }
+    if (profileImage == null || profileImage.isEmpty) {
+      profileImage = metadata['avatar_url'] as String?;
+    }
+    if (profileImage == null || profileImage.isEmpty) {
+      profileImage = metadata['picture'] as String?;
+    }
+
+    // 전화번호는 카카오에서 제공하지 않으므로 빈 문자열 사용
+    // (UserModel 파싱에서 안전하게 처리하도록 일관성 유지)
+    final resolvedPhone = '';
+
+    final nowIso = DateTime.now().toIso8601String();
+
+    final payload = <String, dynamic>{
+      'id': user.id,
+      'email': finalEmail,
+      'phone': resolvedPhone,
+      'name': finalName,
+      'is_verified': true, // 카카오 OAuth는 항상 verified
+      'role': '일반', // 기본 역할
+      'created_at': nowIso,
+      'updated_at': nowIso,
+    };
+
+    if (profileImage != null && profileImage.isNotEmpty) {
+      payload['profile_image'] = profileImage;
+    }
+
+    payload.removeWhere((key, value) => value == null);
+
+    print('  - 카카오 사용자 최종 payload: $payload');
+    return payload;
+  }
+
+  /// 일반 사용자 데이터 처리
+  Map<String, dynamic> _buildGeneralUserPayload(
+    User user,
+    Map<String, dynamic> metadata,
+  ) {
+    // 전화번호 처리
     final resolvedPhone = _resolveUserPhone(user, metadata);
+
+    // 이름 결정
     final resolvedName = _resolveUserName(user, metadata, resolvedPhone);
+
     final nowIso = DateTime.now().toIso8601String();
 
     final rawRole = metadata['role'];
     final role = rawRole is String && rawRole.trim().isNotEmpty
         ? rawRole.trim()
         : '일반';
-    final profileImage = metadata['profile_image'];
     final shopId = metadata['shop_id'];
 
     final payload = <String, dynamic>{
@@ -371,14 +665,18 @@ class AuthService {
       'updated_at': nowIso,
     };
 
+    final profileImage = metadata['avatar_url'] ?? metadata['picture'];
     if (profileImage is String && profileImage.isNotEmpty) {
       payload['profile_image'] = profileImage;
     }
+
     if (shopId is String && shopId.isNotEmpty) {
       payload['shop_id'] = shopId;
     }
 
     payload.removeWhere((key, value) => value == null);
+
+    print('  - 일반 사용자 최종 payload: $payload');
     return payload;
   }
 
@@ -856,26 +1154,43 @@ class AuthService {
     try {
       final scopeString = KakaoConfig.scopes.join(' ');
 
-      // Platform-specific redirect URL configuration
-      // Web: Use Supabase OAuth callback URL
-      // Mobile (Android/iOS): Use deep link
+      // Android에서는 반드시 딥링크를 사용해야 함
+      // 중요: Supabase Dashboard의 Redirect URLs에 이 URL이 추가되어야 함
       final redirectTo = kIsWeb
           ? KakaoConfig.buildWebRedirectUri(redirectPath: redirectPath)
-          : KakaoConfig.buildNativeRedirectUri(redirectPath: redirectPath);
+          : 'resale.marketplace.app://auth-callback'; // Android는 항상 고정된 딥링크 사용
 
+      // Android에서는 외부 브라우저로 열어야 제대로 동작함
       final launchMode = kIsWeb
           ? LaunchMode.platformDefault
           : LaunchMode.externalApplication;
+
+      print('🔐 Kakao OAuth 시작');
+      print('📱 Platform: ${kIsWeb ? "Web" : "Mobile (Android)"}');
+      print('🔗 Redirect URI: $redirectTo');
+      print('🚀 Launch Mode: $launchMode');
+      print('⚠️ 중요: Supabase Dashboard에서 Redirect URLs에 위 URL이 추가되어야 합니다!');
 
       final opened = await _supabase.auth.signInWithOAuth(
         OAuthProvider.kakao,
         redirectTo: redirectTo,
         authScreenLaunchMode: launchMode,
         scopes: scopeString,
-        queryParams: {'scope': scopeString},
+        queryParams: {
+          'scope': scopeString,
+          // Android에서 추가 파라미터
+          if (!kIsWeb) 'prompt': 'select_account',
+        },
       );
+
+      print('✅ OAuth 브라우저 열기: $opened');
+
+      // Android에서 OAuth 완료 후 자동으로 딥링크로 돌아옴
+      // Supabase SDK가 자동으로 세션을 처리함
+
       return opened;
     } catch (error) {
+      print('❌ 카카오 로그인 에러: $error');
       throw Exception('카카오 로그인 실패: $error');
     }
   }

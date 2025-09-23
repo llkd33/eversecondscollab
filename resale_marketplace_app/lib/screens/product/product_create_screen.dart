@@ -39,12 +39,11 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
     '의류',
     '전자기기',
     '생활용품',
-    '가구/인테리어',
-    '도서/문구',
     '스포츠/레저',
+    '도서/문구',
     '뷰티/미용',
     '식품',
-    '반려동물용품',
+    '반려동물',
     '기타'
   ];
   
@@ -209,8 +208,8 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: EdgeInsets.only(
-                left: context.responsivePadding.left,
-                right: context.responsivePadding.right,
+                left: context.isMobile ? 16 : 32,
+                right: context.isMobile ? 16 : 32,
                 bottom: 16,
               ),
               children: [
@@ -467,9 +466,6 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return '상품 설명을 입력해주세요';
-            }
-            if (value.trim().length < 10) {
-              return '상품 설명은 10자 이상 입력해주세요';
             }
             if (value.trim().length > 500) {
               return '상품 설명은 500자 이하로 입력해주세요';

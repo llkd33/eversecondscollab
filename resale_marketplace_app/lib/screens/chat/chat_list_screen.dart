@@ -9,15 +9,28 @@ import '../../models/user_model.dart';
 import 'package:go_router/go_router.dart';
 
 class ChatListScreen extends StatefulWidget {
-  const ChatListScreen({super.key});
+  final UserModel? initialUser;
+  final List<ChatModel>? initialChats;
+  final Future<UserModel?> Function()? userLoaderOverride;
+  final Future<List<ChatModel>> Function(String userId)? chatLoaderOverride;
+  final bool deferInitialLoad;
+
+  const ChatListScreen({
+    super.key,
+    this.initialUser,
+    this.initialChats,
+    this.userLoaderOverride,
+    this.chatLoaderOverride,
+    this.deferInitialLoad = false,
+  });
 
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  final ChatService _chatService = ChatService();
-  final AuthService _authService = AuthService();
+  ChatService? _chatService;
+  AuthService? _authService;
   List<ChatModel> _chats = [];
   bool _isLoading = true;
   UserModel? _currentUser;
@@ -25,25 +38,49 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadChats();
+    _currentUser = widget.initialUser;
+
+    if (widget.initialChats != null) {
+      _chats = List<ChatModel>.from(widget.initialChats!);
+      _isLoading = false;
+    }
+
+    if (!widget.deferInitialLoad && widget.initialChats == null) {
+      _loadChats();
+    } else if (widget.deferInitialLoad) {
+      _isLoading = false;
+    }
   }
 
   Future<void> _loadChats() async {
     try {
       setState(() => _isLoading = true);
 
-      _currentUser = await _authService.getCurrentUser();
-      if (_currentUser != null) {
-        final chats = await _chatService.getMyChats(_currentUser!.id);
+      final user =
+          _currentUser ??
+          (widget.userLoaderOverride != null
+              ? await widget.userLoaderOverride!()
+              : await (_authService ??= AuthService()).getCurrentUser());
+
+      _currentUser = user;
+
+      if (user != null) {
+        final chats = widget.chatLoaderOverride != null
+            ? await widget.chatLoaderOverride!(user.id)
+            : await (_chatService ??= ChatService()).getMyChats(user.id);
+
+        if (!mounted) return;
         setState(() {
           _chats = chats;
           _isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() => _isLoading = false);
       }
     } catch (e) {
       print('Error loading chats: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
