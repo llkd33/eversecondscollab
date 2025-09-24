@@ -181,19 +181,47 @@ class _ChatListItem extends StatelessWidget {
       orElse: () => '',
     );
 
-    return CircleAvatar(
-      radius: 26,
-      backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-      child: Text(
-        otherParticipant.isNotEmpty
-            ? otherParticipant.substring(0, 1).toUpperCase()
-            : '?',
-        style: const TextStyle(
-          color: AppTheme.primaryColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 26,
+          backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+          backgroundImage: chat.otherUserProfileImage != null
+              ? NetworkImage(chat.otherUserProfileImage!)
+              : null,
+          child: chat.otherUserProfileImage == null
+              ? Text(
+                  chat.otherUserName?.substring(0, 1).toUpperCase() ??
+                  (otherParticipant.isNotEmpty
+                      ? otherParticipant.substring(0, 1).toUpperCase()
+                      : '?'),
+                  style: const TextStyle(
+                    color: AppTheme.primaryColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                )
+              : null,
         ),
-      ),
+        if (chat.isResaleChat)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Icon(
+                Icons.store,
+                size: 12,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -204,27 +232,45 @@ class _ChatListItem extends StatelessWidget {
       orElse: () => 'Unknown',
     );
 
-    // 채팅방 제목 결정 (대신팔기 정보 포함)
-    String chatTitle = chat.productTitle ?? otherParticipant;
-    if (chat.isResaleChat && chat.resellerName != null) {
-      chatTitle = '${chat.productTitle} (${chat.resellerName}님이 대신판매)';
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
-              child: Text(
-                chatTitle,
-                style: AppStyles.bodyMedium.copyWith(
-                  fontWeight: hasUnreadMessages
-                      ? FontWeight.bold
-                      : FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      chat.otherUserName ?? otherParticipant,
+                      style: AppStyles.bodyMedium.copyWith(
+                        fontWeight: hasUnreadMessages
+                            ? FontWeight.bold
+                            : FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (chat.isResaleChat) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '대신팔기',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             Text(
@@ -241,23 +287,26 @@ class _ChatListItem extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        // 대신팔기 채팅방 표시
-        if (chat.isResaleChat) ...[
+        // 대신팔기 정보 표시
+        if (chat.isResaleChat && chat.resellerName != null) ...[
           Row(
             children: [
-              Icon(Icons.store, size: 12, color: Colors.orange[600]),
+              Icon(Icons.info_outline, size: 12, color: Colors.blue[600]),
               const SizedBox(width: 4),
-              Text(
-                '대신판매 거래',
-                style: AppStyles.bodySmall.copyWith(
-                  color: Colors.orange[600],
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Text(
+                  '${chat.resellerName}님이 대신 판매중',
+                  style: AppStyles.bodySmall.copyWith(
+                    color: Colors.blue[600],
+                    fontSize: 11,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: 4),
         ],
         Text(
           chat.lastMessage ?? '대화를 시작하세요',

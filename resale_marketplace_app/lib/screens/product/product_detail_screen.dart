@@ -842,6 +842,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (_product == null || _currentUser == null) return;
 
     try {
+      // 대신팔기 상품인지 확인
+      final isResaleProduct = await _checkIfResaleProduct();
+      Map<String, dynamic>? resaleInfo;
+      if (isResaleProduct) {
+        resaleInfo = await _getResaleInfo();
+      }
+
       // 구매 확인 다이얼로그
       final confirmed = await _showBuyConfirmDialog();
       if (confirmed != true) return;
@@ -850,11 +857,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _isUpdating = true;
       });
 
-      // 채팅방 먼저 생성
+      // 채팅방 먼저 생성 (대신팔기 정보 포함)
       final chatService = ChatService();
       final chat = await chatService.createChat(
         participants: [_currentUser!.id, _product!.sellerId],
         productId: _product!.id,
+        isResaleChat: isResaleProduct,
+        resellerId: resaleInfo?['reseller_id'],
+        originalSellerId: resaleInfo?['original_seller_id'],
       );
 
       if (chat == null) {
@@ -869,25 +879,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         price: _product!.price,
         resaleFee: _product!.resaleFee,
         chatId: chat.id,
-        transactionType: '일반거래',
+        transactionType: isResaleProduct ? '대신팔기거래' : '일반거래',
       );
 
       if (transaction != null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('거래가 시작되었습니다. 채팅방에서 거래를 진행해주세요.'),
+            SnackBar(
+              content: Text(isResaleProduct 
+                ? '대신팔기 거래가 시작되었습니다. 채팅방에서 거래를 진행해주세요.'
+                : '거래가 시작되었습니다. 채팅방에서 거래를 진행해주세요.'),
               backgroundColor: Colors.green,
             ),
           );
 
-          // 채팅방으로 이동
+          // 채팅방으로 이동 (대신팔기 정보 포함)
           context.push(
             '/chat_room',
             extra: {
               'chatRoomId': chat.id,
               'userName': _product?.sellerName ?? '',
               'productTitle': _product?.title ?? '',
+              'isResaleChat': isResaleProduct,
+              'resellerName': resaleInfo?['reseller_name'],
+              'originalSellerName': resaleInfo?['original_seller_name'],
             },
           );
         }
@@ -905,6 +920,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _isUpdating = false;
       });
     }
+  }
+
+  // 대신팔기 상품인지 확인
+  Future<bool> _checkIfResaleProduct() async {
+    // TODO: 실제 구현 필요 - DB에서 resale_products 테이블 확인
+    // 현재는 임시로 false 반환
+    return false;
+  }
+
+  // 대신팔기 정보 가져오기
+  Future<Map<String, dynamic>?> _getResaleInfo() async {
+    // TODO: 실제 구현 필요 - DB에서 대신팔기 정보 가져오기
+    // 현재는 임시로 null 반환
+    return null;
   }
 
   // 구매 확인 다이얼로그

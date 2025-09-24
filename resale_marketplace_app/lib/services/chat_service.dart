@@ -22,6 +22,7 @@ class ChatService {
     String? resellerId, // 대신판매자 ID
     bool isResaleChat = false,
     String? originalSellerId, // 원 판매자 ID
+    Map<String, dynamic>? extraData, // 추가 메타데이터
   }) async {
     try {
       // Validate participants (must all be UUIDs)
@@ -62,13 +63,18 @@ class ChatService {
 
       // 대신팔기 채팅방인 경우 시스템 메시지 추가
       if (isResaleChat && resellerId != null) {
+        // 대신판매자와 원 판매자 정보 가져오기
+        final resellerInfo = extraData?['reseller_name'] ?? '대신판매자';
+        final originalSellerInfo = extraData?['original_seller_name'] ?? '원 판매자';
+        
         await sendSystemMessage(
           chatId: chat.id,
           content:
-              '🔔 대신팔기 채팅방 안내\n\n'
-              '이 채팅방은 대신팔기 상품 거래를 위한 채팅방입니다.\n'
-              '대신판매자가 원 판매자를 대신하여 상품을 판매하고 있습니다.\n'
-              '거래 시 대신판매 수수료가 적용됩니다.',
+              '🏪 대신팔기 거래 안내\n\n'
+              '${resellerInfo}님이 ${originalSellerInfo}님을 대신하여 판매중입니다.\n'
+              '• 대신판매자가 거래를 중개합니다\n'
+              '• 상품은 원 판매자가 직접 발송합니다\n'
+              '• 거래 시 대신판매 수수료가 적용됩니다',
         );
       }
 

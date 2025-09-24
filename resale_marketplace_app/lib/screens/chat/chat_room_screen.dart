@@ -171,6 +171,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                if (widget.isResaleChat) _buildResaleBanner(),
                 if (widget.productTitle.isNotEmpty) _buildProductInfo(),
                 Expanded(child: _buildMessageList()),
                 _buildTransactionButtons(),
@@ -756,6 +757,136 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _showBlockDialog();
         break;
     }
+  }
+
+  Widget _buildResaleBanner() {
+    if (!widget.isResaleChat || widget.resellerName == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade50, Colors.blue.shade100],
+        ),
+        border: Border(bottom: BorderSide(color: Colors.blue.shade200)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.store, color: Colors.blue.shade700, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                children: [
+                  TextSpan(
+                    text: '${widget.resellerName}님',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                  ),
+                  const TextSpan(text: '의 대신팔기를 통해 거래가 진행중입니다\n'),
+                  TextSpan(
+                    text: '원 판매자: ${widget.originalSellerName ?? '알 수 없음'}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.info_outline, color: Colors.blue.shade600),
+            onPressed: _showResaleInfo,
+            tooltip: '대신팔기 안내',
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showResaleInfo() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('대신팔기 거래 안내',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildInfoRow(Icons.person, '대신판매자', widget.resellerName ?? ''),
+            _buildInfoRow(Icons.person_outline, '원 판매자', widget.originalSellerName ?? ''),
+            _buildInfoRow(Icons.percent, '수수료', '판매가의 10%'),
+            const SizedBox(height: 20),
+            const Text('대신팔기 거래 프로세스',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            _buildProcessStep('1', '대신판매자가 구매자와 소통합니다'),
+            _buildProcessStep('2', '거래 확정시 원 판매자에게 알림이 갑니다'),
+            _buildProcessStep('3', '원 판매자가 직접 상품을 발송합니다'),
+            _buildProcessStep('4', '거래 완료시 수수료가 정산됩니다'),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey.shade600),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProcessStep(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(number,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                )),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+        ],
+      ),
+    );
   }
 
   void _startSafeTransaction() {
