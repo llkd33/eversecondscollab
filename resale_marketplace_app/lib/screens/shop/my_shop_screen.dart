@@ -42,12 +42,15 @@ class _MyShopScreenState extends State<MyShopScreen>
   }
 
   Future<void> _loadShopData() async {
+    print('🔄 내샵 데이터 로딩 시작');
+    
     try {
       setState(() => _isLoading = true);
 
       final authProvider = context.read<AuthProvider>();
 
       if (!authProvider.isAuthenticated) {
+        print('❌ 사용자 인증되지 않음 - 로그인 페이지로 이동');
         if (mounted) {
           const redirectPath = '/shop';
           final encoded = Uri.encodeComponent(redirectPath);
@@ -57,21 +60,28 @@ class _MyShopScreenState extends State<MyShopScreen>
       }
 
       _currentUser = authProvider.currentUser;
+      print('👤 현재 사용자: ${_currentUser?.id}');
 
       if (_currentUser == null) {
+        print('🔑 자동 로그인 시도');
         final autoLoginSucceeded = await authProvider.tryAutoLogin();
         if (autoLoginSucceeded) {
           _currentUser = authProvider.currentUser;
+          print('✅ 자동 로그인 성공: ${_currentUser?.id}');
+        } else {
+          print('❌ 자동 로그인 실패');
         }
       }
 
       _currentUser ??= await _userService.getCurrentUser();
 
       if (_currentUser == null) {
+        print('❌ 사용자 정보를 가져올 수 없음');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('사용자 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'),
+              content: Text('사용자 정보를 불러오지 못했습니다. 다시 로그인해주세요.'),
+              backgroundColor: Colors.red,
             ),
           );
         }
@@ -79,41 +89,87 @@ class _MyShopScreenState extends State<MyShopScreen>
       }
 
       // 사용자의 샵 정보 가져오기
+      print('🏪 샵 정보 조회 시작: ${_currentUser!.id}');
       _currentShop = await _shopService.getShopByOwnerId(_currentUser!.id);
 
       if (_currentShop == null) {
-        // 샵이 없으면 생성
+        print('🔨 샵이 없어서 생성 시도');
         _currentShop = await _shopService.ensureUserShop(
           _currentUser!.id,
           _currentUser!.name,
         );
+        
+        if (_currentShop == null) {
+          print('❌ 샵 생성 실패');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('샵을 생성하는데 실패했습니다. 잠시 후 다시 시도해주세요.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        } else {
+          print('✅ 샵 생성 성공: ${_currentShop!.id}');
+        }
+      } else {
+        print('✅ 기존 샵 정보 조회 성공: ${_currentShop!.id}');
       }
 
       if (_currentShop != null) {
-        // 내 상품 목록 가져오기
-        _myProducts = await _shopService.getShopProducts(_currentShop!.id);
+        // 데이터를 병렬로 가져와서 성능 개선
+        print('📦 상품 및 통계 정보 로딩 시작');
+        
+        final results = await Future.wait([
+          // 내 상품 목록 가져오기
+          _shopService.getShopProducts(_currentShop!.id).catchError((e) {
+            print('❌ 내 상품 로딩 실패: $e');
+            return <ProductModel>[];
+          }),
+          // 대신팔기 상품 목록 가져오기
+          _shopService.getShopResaleProducts(_currentShop!.id).catchError((e) {
+            print('❌ 대신팔기 상품 로딩 실패: $e');
+            return <ProductModel>[];
+          }),
+          // 샵 통계 가져오기
+          _shopService.getShopStats(_currentShop!.id).catchError((e) {
+            print('❌ 샵 통계 로딩 실패: $e');
+            return <String, dynamic>{};
+          }),
+        ]);
 
-        // 대신팔기 상품 목록 가져오기
-        _resaleProducts = await _shopService.getShopResaleProducts(
-          _currentShop!.id,
-        );
-
-        // 샵 통계 가져오기
-        _shopStats = await _shopService.getShopStats(_currentShop!.id);
+        _myProducts = results[0] as List<ProductModel>;
+        _resaleProducts = results[1] as List<ProductModel>;
+        _shopStats = results[2] as Map<String, dynamic>;
+        
+        print('✅ 데이터 로딩 완료');
+        print('  - 내 상품: ${_myProducts.length}개');
+        print('  - 대신팔기 상품: ${_resaleProducts.length}개');
+        print('  - 통계: ${_shopStats.keys.join(", ")}');
       }
-    } catch (e) {
-      print('Error loading shop data: $e');
+    } catch (e, stackTrace) {
+      print('❌ 내샵 데이터 로딩 중 오류 발생: $e');
+      print('스택 트레이스: $stackTrace');
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('샵 정보를 불러오는데 실패했습니다: $e'),
+            content: Text('샵 정보를 불러오는데 실패했습니다.\n오류: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: '재시도',
+              textColor: Colors.white,
+              onPressed: _loadShopData,
+            ),
           ),
         );
       }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
+        print('🏁 내샵 데이터 로딩 완료');
       }
     }
   }

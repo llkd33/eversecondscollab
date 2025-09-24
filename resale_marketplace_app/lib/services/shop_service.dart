@@ -504,46 +504,140 @@ class ShopService {
   // 샵 통계 조회
   Future<Map<String, dynamic>> getShopStats(String shopId) async {
     try {
+      print('📊 샵 통계 조회 시작: $shopId');
+      
       if (!UuidUtils.isValid(shopId)) {
         print('getShopStats skipped: invalid UUID "$shopId"');
         return {};
       }
+      
       final shop = await getShopById(shopId);
-      if (shop == null) return {};
+      if (shop == null) {
+        print('❌ 샵 정보를 찾을 수 없음');
+        return {};
+      }
 
-      // 직접 등록 상품 수
-      final ownProductCount = await _client
-          .from('products')
-          .select('id')
-          .eq('seller_id', shop.ownerId)
-          .count();
+      print('👤 샵 소유자: ${shop.ownerId}');
 
-      // 대신팔기 상품 수
-      final resaleProductCount = await _client
-          .from('shop_products')
-          .select('id')
-          .eq('shop_id', shopId)
-          .eq('is_resale', true)
-          .count();
+      // 병렬로 통계 데이터 가져오기
+      final results = await Future.wait([
+        // 직접 등록 상품 수
+        _getProductCount(shop.ownerId).catchError((e) {
+          print('❌ 직접 등록 상품 수 조회 실패: $e');
+          return 0;
+        }),
+        // 대신팔기 상품 수  
+        _getResaleProductCount(shopId).catchError((e) {
+          print('❌ 대신팔기 상품 수 조회 실패: $e');
+          return 0;
+        }),
+        // 총 거래 수
+        _getTransactionCount(shop.ownerId).catchError((e) {
+          print('❌ 거래 수 조회 실패: $e');
+          return 0;
+        }),
+      ]);
 
-      // 총 거래 수
-      final transactionCount = await _client
-          .from('transactions')
-          .select('id')
-          .or('seller_id.eq.${shop.ownerId},reseller_id.eq.${shop.ownerId}')
-          .eq('status', '거래완료')
-          .count();
+      final ownProductCount = results[0] as int;
+      final resaleProductCount = results[1] as int;
+      final transactionCount = results[2] as int;
 
-      return {
-        'own_product_count': ownProductCount.count ?? 0,
-        'resale_product_count': resaleProductCount.count ?? 0,
-        'total_product_count':
-            (ownProductCount.count ?? 0) + (resaleProductCount.count ?? 0),
-        'transaction_count': transactionCount.count ?? 0,
+      final stats = {
+        'own_product_count': ownProductCount,
+        'resale_product_count': resaleProductCount,
+        'total_product_count': ownProductCount + resaleProductCount,
+        'transaction_count': transactionCount,
       };
+
+      print('✅ 샵 통계 조회 완료: $stats');
+      return stats;
     } catch (e) {
-      print('Error getting shop stats: $e');
+      print('❌ 샵 통계 조회 중 오류: $e');
       return {};
+    }
+  }
+
+  // 직접 등록 상품 수 조회
+  Future<int> _getProductCount(String ownerId) async {
+    try {
+      final response = await _client
+          .from('products')
+          .select('id', const FetchOptions(count: CountOption.exact))
+          .eq('seller_id', ownerId);
+      
+      if (response is PostgrestResponse) {
+        return response.count ?? 0;
+      } else if (response is List) {
+        return response.length;
+      }
+      return 0;
+    } catch (e) {
+      print('Error counting products: $e');
+      // Fallback: 직접 리스트 길이 계산
+      try {
+        final response = await _client
+            .from('products')
+            .select('id')
+            .eq('seller_id', ownerId);
+        return (response as List?)?.length ?? 0;
+      } catch (fallbackError) {
+        print('Fallback product count also failed: $fallbackError');
+        return 0;
+      }
+    }
+  }
+
+  // 대신팔기 상품 수 조회
+  Future<int> _getResaleProductCount(String shopId) async {
+    try {
+      final response = await _client
+          .from('shop_products')
+          .select('id', const FetchOptions(count: CountOption.exact))
+          .eq('shop_id', shopId)
+          .eq('is_resale', true);
+      
+      if (response is PostgrestResponse) {
+        return response.count ?? 0;
+      } else if (response is List) {
+        return response.length;
+      }
+      return 0;
+    } catch (e) {
+      print('Error counting resale products: $e');
+      // Fallback: 직접 리스트 길이 계산
+      try {
+        final response = await _client
+            .from('shop_products')
+            .select('id')
+            .eq('shop_id', shopId)
+            .eq('is_resale', true);
+        return (response as List?)?.length ?? 0;
+      } catch (fallbackError) {
+        print('Fallback resale product count also failed: $fallbackError');
+        return 0;
+      }
+    }
+  }
+
+  // 거래 수 조회
+  Future<int> _getTransactionCount(String ownerId) async {
+    try {
+      final response = await _client
+          .from('transactions')
+          .select('id', const FetchOptions(count: CountOption.exact))
+          .or('seller_id.eq.$ownerId,reseller_id.eq.$ownerId')
+          .eq('status', '거래완료');
+      
+      if (response is PostgrestResponse) {
+        return response.count ?? 0;
+      } else if (response is List) {
+        return response.length;
+      }
+      return 0;
+    } catch (e) {
+      print('Error counting transactions: $e');
+      // transactions 테이블이 존재하지 않을 수 있으므로 0 반환
+      return 0;
     }
   }
 
