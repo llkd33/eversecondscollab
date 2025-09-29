@@ -12,6 +12,13 @@ class UserModel {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  // 🏦 계좌 정보 (정산용)
+  final String? bankName; // 은행명
+  final String? accountNumber; // 계좌번호 (복호화된 상태)
+  final String? accountHolder; // 예금주
+  final bool isAccountVerified; // 계좌 인증여부
+  final bool showAccountForNormal; // 일반거래시 계좌번호 공개 여부
+
   UserModel({
     required this.id,
     this.email, // nullable로 변경
@@ -23,25 +30,33 @@ class UserModel {
     this.shopId,
     required this.createdAt,
     required this.updatedAt,
+    // 계좌 정보
+    this.bankName,
+    this.accountNumber,
+    this.accountHolder,
+    this.isAccountVerified = false,
+    this.showAccountForNormal = false,
   }) {
     _validate();
   }
 
   // 데이터 검증 로직
   void _validate() {
-    if (id.isEmpty) throw ArgumentError('User ID cannot be empty');
-    if (name.isEmpty) throw ArgumentError('Name cannot be empty');
+    if (id.isEmpty) throw ArgumentError('사용자 ID는 비어있을 수 없습니다');
+    if (name.isEmpty) throw ArgumentError('이름은 비어있을 수 없습니다');
     // 이메일이 있으면 검증, 없으면 전화번호 기반 로그인으로 간주
     if (email != null && email!.isNotEmpty && !_isValidEmail(email!)) {
-      throw ArgumentError('Invalid email format');
+      throw ArgumentError('유효하지 않은 이메일 형식입니다');
     }
-    if (!_isValidPhone(phone)) throw ArgumentError('Invalid phone format');
-    if (!UserRole.isValid(role)) throw ArgumentError('Invalid user role');
+    if (!_isValidPhone(phone)) throw ArgumentError('유효하지 않은 전화번호 형식입니다');
+    if (!UserRole.isValid(role)) throw ArgumentError('유효하지 않은 사용자 권한입니다');
   }
 
   // 이메일 형식 검증
   bool _isValidEmail(String email) {
-    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+    return RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    ).hasMatch(email);
   }
 
   // 전화번호 형식 검증 (한국 전화번호)
@@ -69,6 +84,13 @@ class UserModel {
       shopId: _stringValue(json['shop_id']),
       createdAt: _parseDate(json['created_at']),
       updatedAt: _parseDate(json['updated_at']),
+      // 계좌 정보 (암호화된 계좌번호는 서비스에서 복호화)
+      bankName: _stringValue(json['bank_name']),
+      accountNumber: null, // 복호화는 별도 서비스에서 처리
+      accountHolder: _stringValue(json['account_holder']),
+      isAccountVerified: _boolValue(json['is_account_verified']) ?? false,
+      showAccountForNormal:
+          _boolValue(json['show_account_for_normal']) ?? false,
     );
   }
 
@@ -108,13 +130,23 @@ class UserModel {
       'shop_id': shopId,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      // 계좌 정보 (암호화는 서비스에서 처리)
+      'bank_name': bankName,
+      'account_holder': accountHolder,
+      'is_account_verified': isAccountVerified,
+      'show_account_for_normal': showAccountForNormal,
     };
   }
 
   // Supabase Auth User에서 UserModel 생성 헬퍼
-  static UserModel fromSupabaseUser(supabase.User user, Map<String, dynamic> metadata) {
+  static UserModel fromSupabaseUser(
+    supabase.User user,
+    Map<String, dynamic> metadata,
+  ) {
     final rawName = metadata['name'];
-    final resolvedName = rawName is String ? rawName.trim() : _stringValue(rawName) ?? '';
+    final resolvedName = rawName is String
+        ? rawName.trim()
+        : _stringValue(rawName) ?? '';
     final fallbackName = '사용자${user.id.replaceAll('-', '').substring(0, 8)}';
     final name = resolvedName.isEmpty ? fallbackName : resolvedName;
     final resolvedPhone = _stringValue(metadata['phone']) ?? '';
@@ -147,6 +179,12 @@ class UserModel {
     String? shopId,
     DateTime? createdAt,
     DateTime? updatedAt,
+    // 계좌 정보
+    String? bankName,
+    String? accountNumber,
+    String? accountHolder,
+    bool? isAccountVerified,
+    bool? showAccountForNormal,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -159,6 +197,12 @@ class UserModel {
       shopId: shopId ?? this.shopId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      // 계좌 정보
+      bankName: bankName ?? this.bankName,
+      accountNumber: accountNumber ?? this.accountNumber,
+      accountHolder: accountHolder ?? this.accountHolder,
+      isAccountVerified: isAccountVerified ?? this.isAccountVerified,
+      showAccountForNormal: showAccountForNormal ?? this.showAccountForNormal,
     );
   }
 
@@ -179,6 +223,34 @@ class UserModel {
   String get displayProfileImage {
     return profileImage ?? 'https://via.placeholder.com/150';
   }
+
+  // 🏦 계좌 관련 헬퍼 메서드들
+  bool get hasAccountInfo {
+    final hasBank = (bankName ?? '').trim().isNotEmpty;
+    final hasHolder = (accountHolder ?? '').trim().isNotEmpty;
+    return hasBank && hasHolder;
+  }
+
+  // 계좌 정보 마스킹 표시 (보안용)
+  String? get maskedAccountNumber {
+    if (accountNumber == null || accountNumber!.length < 4)
+      return accountNumber;
+    final visible = accountNumber!.substring(accountNumber!.length - 4);
+    final masked = '*' * (accountNumber!.length - 4);
+    return '$masked$visible';
+  }
+
+  // 계좌 정보 전체 표시 (본인 또는 거래상대방에게만)
+  String get fullAccountDisplay {
+    if (!hasAccountInfo) return '계좌 정보 없음';
+    final displayNumber = accountNumber?.isNotEmpty == true
+        ? accountNumber
+        : '등록된 계좌번호 없음';
+    return '$bankName $displayNumber ($accountHolder)';
+  }
+
+  // 계좌 설정 완료 여부
+  bool get isAccountSetupComplete => hasAccountInfo && isAccountVerified;
 }
 
 // 사용자 역할 상수

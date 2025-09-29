@@ -6,6 +6,7 @@ import '../models/user_model.dart';
 import '../models/shop_model.dart';
 import '../utils/test_session.dart';
 import 'shop_service.dart';
+import 'image_compression_service.dart';
 
 class UserService {
   final SupabaseClient _client = SupabaseConfig.client;
@@ -164,7 +165,7 @@ class UserService {
       );
 
       if (authResponse.user == null) {
-        throw Exception('Failed to create auth user');
+        throw Exception('인증 사용자 생성에 실패했습니다. 다시 시도해주세요.');
       }
 
       // Users 테이블에 추가 (DB 트리거가 자동으로 샵을 생성함)
@@ -246,17 +247,96 @@ class UserService {
     required String userId,
     String? name,
     String? profileImage,
+    String? bankName,
+    String? accountHolder,
+    bool? showAccountForNormal,
   }) async {
+    bool tableUpdated = false;
+    bool metadataUpdated = false;
+
+    final updates = <String, dynamic>{};
+    if (name != null) updates['name'] = name;
+    if (profileImage != null) updates['profile_image'] = profileImage;
+    if (bankName != null) updates['bank_name'] = bankName;
+    if (accountHolder != null) updates['account_holder'] = accountHolder;
+    if (showAccountForNormal != null) {
+      updates['show_account_for_normal'] = showAccountForNormal;
+    }
+
+    if (updates.isNotEmpty) {
+      try {
+        await _client.from('users').update(updates).eq('id', userId);
+        tableUpdated = true;
+      } on PostgrestException catch (e) {
+        print('Users 테이블 업데이트 실패: ${e.message}');
+
+        final missingColumn = _extractMissingColumn(e.message);
+        if (missingColumn != null) {
+          updates.remove(missingColumn);
+          if (updates.isNotEmpty) {
+            try {
+              await _client.from('users').update(updates).eq('id', userId);
+              tableUpdated = true;
+            } catch (retryError) {
+              print('Users 테이블 재시도 실패: $retryError');
+            }
+          }
+        }
+      } catch (e) {
+        print('Error updating user profile: $e');
+      }
+    }
+
+    final metadataUpdates = <String, dynamic>{};
+    if (bankName != null) metadataUpdates['bank_name'] = bankName;
+    if (accountHolder != null)
+      metadataUpdates['account_holder'] = accountHolder;
+    if (showAccountForNormal != null) {
+      metadataUpdates['show_account_for_normal'] = showAccountForNormal;
+    }
+
+    if (metadataUpdates.isNotEmpty) {
+      metadataUpdated = await _updateAuthMetadata(metadataUpdates);
+    }
+
+    return tableUpdated || metadataUpdated;
+  }
+
+  String? _extractMissingColumn(String? message) {
+    if (message == null) return null;
+    final patterns = [
+      RegExp(r"'([a-zA-Z0-9_]+)' column"),
+      RegExp(r'column "([a-zA-Z0-9_]+)" does not exist'),
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(message);
+      if (match != null && match.groupCount >= 1) {
+        return match.group(1);
+      }
+    }
+
+    return null;
+  }
+
+  Future<bool> _updateAuthMetadata(Map<String, dynamic> updates) async {
     try {
-      final updates = <String, dynamic>{};
-      if (name != null) updates['name'] = name;
-      if (profileImage != null) updates['profile_image'] = profileImage;
+      final authUser = _client.auth.currentUser;
+      if (authUser == null) return false;
 
-      await _client.from('users').update(updates).eq('id', userId);
+      final metadata = Map<String, dynamic>.from(authUser.userMetadata ?? {});
+      metadata.addAll(updates);
 
+      final response = await _client.auth.updateUser(
+        UserAttributes(data: metadata),
+      );
+      if (response.user == null) {
+        print('Auth metadata 업데이트 실패: 응답에 user가 없습니다');
+        return false;
+      }
       return true;
     } catch (e) {
-      print('Error updating user profile: $e');
+      print('Auth metadata 업데이트 실패: $e');
       return false;
     }
   }
@@ -264,15 +344,44 @@ class UserService {
   // 프로필 이미지 업로드
   Future<String?> uploadProfileImage(File imageFile, String userId) async {
     try {
-      final bytes = await imageFile.readAsBytes();
+      print('📷 프로필 이미지 업로드 시작');
+
+      // 프로필 이미지 압축
+      final compressedFile = await ImageCompressionService.compressImage(
+        imageFile,
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 90,
+        maxFileSize: 1 * 1024 * 1024, // 1MB
+      );
+
+      if (compressedFile == null) {
+        print('⚠️ 프로필 이미지 압축 실패');
+        return null;
+      }
+
+      final bytes = await compressedFile.readAsBytes();
       final fileName =
           'profile_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      print(
+        '📦 압축된 프로필 이미지 업로드: ${(bytes.length / 1024).toStringAsFixed(1)}KB',
+      );
 
       await _client.storage
           .from('profile-images')
           .uploadBinary(fileName, bytes);
 
       final url = _client.storage.from('profile-images').getPublicUrl(fileName);
+
+      // 임시 압축 파일 삭제
+      if (compressedFile.path != imageFile.path) {
+        try {
+          await compressedFile.delete();
+        } catch (e) {
+          print('임시 파일 삭제 실패: $e');
+        }
+      }
 
       return url;
     } catch (e) {

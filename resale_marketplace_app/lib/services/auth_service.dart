@@ -268,23 +268,23 @@ class AuthService {
 
           if (retry != null) {
             print('✅ 프로필 생성 및 조회 성공');
-            return UserModel.fromJson(retry);
+            return _mergeAuthMetadata(UserModel.fromJson(retry));
           }
         }
 
         // 최후의 수단으로 Auth 사용자 정보를 기반으로 기본 프로필 생성
         print('⚠️ DB에 프로필 생성 실패, 메모리에서 임시 프로필 사용');
         final fallbackUser = _buildUserPayloadFromAuth(currentUser!);
-        return UserModel.fromJson(fallbackUser);
+        return _mergeAuthMetadata(UserModel.fromJson(fallbackUser));
       }
 
-      return UserModel.fromJson(response);
+      return _mergeAuthMetadata(UserModel.fromJson(response));
     } catch (e) {
       print('Error fetching user profile: $e');
       // 에러가 발생해도 Auth 정보로 기본 프로필 생성 시도
       if (currentUser != null) {
         final fallbackUser = _buildUserPayloadFromAuth(currentUser!);
-        return UserModel.fromJson(fallbackUser);
+        return _mergeAuthMetadata(UserModel.fromJson(fallbackUser));
       }
       return null;
     }
@@ -633,6 +633,41 @@ class AuthService {
 
     print('  - 카카오 사용자 최종 payload: $payload');
     return payload;
+  }
+
+  UserModel _mergeAuthMetadata(UserModel user) {
+    final authUser = _supabase.auth.currentUser;
+    if (authUser == null) return user;
+
+    final metadata = authUser.userMetadata ?? {};
+    if (metadata.isEmpty) return user;
+
+    String? _stringMeta(String key) {
+      final value = metadata[key];
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isNotEmpty) return trimmed;
+      }
+      return null;
+    }
+
+    bool? _boolMeta(String key) {
+      final value = metadata[key];
+      if (value is bool) return value;
+      if (value is String) {
+        if (value.toLowerCase() == 'true') return true;
+        if (value.toLowerCase() == 'false') return false;
+      }
+      return null;
+    }
+
+    return user.copyWith(
+      bankName: _stringMeta('bank_name') ?? user.bankName,
+      accountHolder: _stringMeta('account_holder') ?? user.accountHolder,
+      accountNumber: _stringMeta('account_number_masked') ?? user.accountNumber,
+      showAccountForNormal:
+          _boolMeta('show_account_for_normal') ?? user.showAccountForNormal,
+    );
   }
 
   /// 일반 사용자 데이터 처리
@@ -1018,7 +1053,7 @@ class AuthService {
           .single();
 
       _cache.clear();
-      return UserModel.fromJson(userRow);
+      return _mergeAuthMetadata(UserModel.fromJson(userRow));
     } catch (e) {
       final msg = e.toString();
       // 2) Fallback: if phone provider disabled, sign up via email+password
@@ -1050,7 +1085,7 @@ class AuthService {
             .single();
 
         _cache.clear();
-        return UserModel.fromJson(userRow);
+        return _mergeAuthMetadata(UserModel.fromJson(userRow));
       }
 
       if (msg.contains('User already registered')) {
