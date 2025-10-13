@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
+import '../../services/shop_service.dart';
+import '../../services/auth_service.dart';
+import '../../models/shop_model.dart';
 
 class MyShopScreen extends StatefulWidget {
   const MyShopScreen({super.key});
@@ -14,6 +18,10 @@ class MyShopScreen extends StatefulWidget {
 class _MyShopScreenState extends State<MyShopScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ShopService _shopService = ShopService();
+  final AuthService _authService = AuthService();
+  ShopModel? _myShop;
+  bool _isLoadingShop = true;
 
   @override
   void initState() {
@@ -22,6 +30,29 @@ class _MyShopScreenState extends State<MyShopScreen>
     _tabController.addListener(() {
       setState(() {}); // Rebuild to update FAB
     });
+    _loadMyShop();
+  }
+
+  Future<void> _loadMyShop() async {
+    try {
+      final user = _authService.currentUser;
+      if (user == null) return;
+
+      final shop = await _shopService.getShopByOwnerId(user.id);
+      if (mounted) {
+        setState(() {
+          _myShop = shop;
+          _isLoadingShop = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading my shop: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingShop = false;
+        });
+      }
+    }
   }
 
   @override
@@ -30,90 +61,48 @@ class _MyShopScreenState extends State<MyShopScreen>
     super.dispose();
   }
 
-  void _shareShopLink(BuildContext context) {
-    // TODO: 실제 샵 링크 생성 로직 구현
-    const shopLink = 'https://resale-market.com/shop/user123';
-    
-    Clipboard.setData(const ClipboardData(text: shopLink));
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text('샵 링크가 클립보드에 복사되었습니다'),
-          ],
+  Future<void> _shareShopLink(BuildContext context) async {
+    if (_myShop?.shareUrl == null || _myShop!.shareUrl!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('샵 링크를 생성할 수 없습니다.'),
+          backgroundColor: Colors.red,
         ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        action: SnackBarAction(
-          label: '공유하기',
-          textColor: Colors.white,
-          onPressed: () {
-            // TODO: 시스템 공유 다이얼로그 열기
-            _showShareDialog(context, shopLink);
-          },
-        ),
-      ),
-    );
-  }
+      );
+      return;
+    }
 
-  void _showShareDialog(BuildContext context, String shopLink) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('내 샵 공유하기'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('내 샵을 친구들에게 공유해보세요!'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      shopLink,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 16),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: shopLink));
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
+    final webLink = 'https://app.everseconds.com/shop/${_myShop!.shareUrl}';
+    final shopName = _myShop!.name;
+    final message = '$shopName을 확인해보세요!\n\n$webLink';
+
+    try {
+      await Share.share(
+        message,
+        subject: '$shopName 샵 공유',
+      );
+    } catch (e) {
+      // Share not supported, fallback to clipboard
+      await Clipboard.setData(ClipboardData(text: webLink));
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('샵 링크가 클립보드에 복사되었습니다'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // TODO: 카카오톡 공유 등 실제 공유 기능 구현
-              Navigator.pop(context);
-            },
-            child: const Text('카카오톡 공유'),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
 
   @override
