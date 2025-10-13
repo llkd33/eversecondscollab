@@ -12,6 +12,7 @@ import '../utils/app_router.dart';
 enum NotificationType { chatMessage, transaction, review, system, promotion }
 
 class NotificationPayload {
+  final String id;
   final NotificationType type;
   final String title;
   final String body;
@@ -19,6 +20,7 @@ class NotificationPayload {
   final DateTime timestamp;
 
   NotificationPayload({
+    required this.id,
     required this.type,
     required this.title,
     required this.body,
@@ -28,6 +30,7 @@ class NotificationPayload {
 
   factory NotificationPayload.fromJson(Map<String, dynamic> json) {
     return NotificationPayload(
+      id: json['id'] as String? ?? '',
       type: _parseNotificationType(json['type'] as String?),
       title: json['title'] as String? ?? '',
       body: json['body'] as String? ?? '',
@@ -318,7 +321,42 @@ class PushNotificationService {
     }
   }
 
-  /// 로컬 알림 표시
+  /// 로컬 알림 표시 (public method for realtime service)
+  Future<void> showLocalNotification({
+    required String title,
+    required String body,
+    Map<String, dynamic>? data,
+  }) async {
+    const details = AndroidNotificationDetails(
+      'system',
+      '시스템 알림',
+      channelDescription: '앱 시스템 알림',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const notificationDetails = NotificationDetails(
+      android: details,
+      iOS: iosDetails,
+    );
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch,
+      title,
+      body,
+      notificationDetails,
+      payload: data != null ? jsonEncode(data) : null,
+    );
+  }
+
+  /// 로컬 알림 표시 (private method for Firebase messages)
   Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
@@ -422,6 +460,7 @@ class PushNotificationService {
     final type = _parseNotificationType(message.data['type'] as String?);
 
     return NotificationPayload(
+      id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       type: type,
       title: notification?.title ?? '',
       body: notification?.body ?? '',
@@ -516,6 +555,30 @@ class PushNotificationService {
   /// 알림 배지 클리어
   Future<void> clearBadge() async {
     await updateBadgeCount(0);
+  }
+
+  /// 특정 FCM 토큰으로 직접 알림 전송
+  Future<void> sendNotificationToToken({
+    required String token,
+    required String title,
+    required String body,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      await _supabase.functions.invoke(
+        'send-notification-to-token',
+        body: {
+          'token': token,
+          'title': title,
+          'body': body,
+          'data': data ?? {},
+        },
+      );
+
+      developer.log('Notification sent to token successfully');
+    } catch (e) {
+      developer.log('Failed to send notification to token: $e');
+    }
   }
 
   /// 현재 FCM 토큰 가져오기

@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/admin_service.dart';
 import '../../services/user_service.dart';
 import '../../services/transaction_service.dart';
 import '../../services/product_service.dart';
+import '../../models/app_download_config.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/realtime_provider.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/admin/chart_widgets.dart';
+import '../../widgets/admin/realtime_report_widgets.dart';
 
 class WebAdminDashboard extends StatefulWidget {
   const WebAdminDashboard({super.key});
@@ -19,9 +25,20 @@ class WebAdminDashboard extends StatefulWidget {
 
 class _WebAdminDashboardState extends State<WebAdminDashboard> {
   final AuthService _authService = AuthService();
+  final AdminService _adminService = AdminService();
   final UserService _userService = UserService();
   final TransactionService _transactionService = TransactionService();
   final ProductService _productService = ProductService();
+  final AppSettingsService _appSettingsService = AppSettingsService();
+
+  AppDownloadConfig _appDownloadConfig = AppDownloadConfig.defaults();
+  bool _isLoadingAppConfig = true;
+  bool _isSavingAppConfig = false;
+
+  final TextEditingController _playStoreController = TextEditingController();
+  final TextEditingController _appStoreController = TextEditingController();
+  final TextEditingController _universalLinkController = TextEditingController();
+  final TextEditingController _qrImageController = TextEditingController();
 
   UserModel? _currentUser;
   bool _isLoading = true;
@@ -36,13 +53,23 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
   double _totalRevenue = 0;
   
   // 차트 데이터
-  final List<Map<String, dynamic>> _monthlyData = [];
-  final List<Map<String, dynamic>> _categoryData = [];
+  List<Map<String, dynamic>> _monthlyData = [];
+  List<Map<String, dynamic>> _categoryData = [];
+  List<Map<String, dynamic>> _recentActivities = [];
 
   @override
   void initState() {
     super.initState();
     _checkAdminAccess();
+  }
+
+  @override
+  void dispose() {
+    _playStoreController.dispose();
+    _appStoreController.dispose();
+    _universalLinkController.dispose();
+    _qrImageController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkAdminAccess() async {
@@ -66,28 +93,120 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
     });
 
     await _loadStatistics();
+    await _loadAppDownloadConfig();
   }
 
   Future<void> _loadStatistics() async {
     try {
       setState(() => _isLoading = true);
 
-      // TODO: 실제 데이터 로드 구현
-      await Future.delayed(const Duration(seconds: 1));
+      // Load dashboard statistics
+      final stats = await _adminService.getDashboardStats();
+      
+      // Load monthly data for charts
+      final monthlyStats = await _adminService.getMonthlyStats();
+      
+      // Load category data
+      final categoryStats = await _adminService.getCategoryStats();
+      
+      // Load recent activities
+      final activities = await _adminService.getRecentActivities(limit: 10);
 
       setState(() {
-        _totalUsers = 1234;
-        _activeUsers = 856;
-        _totalProducts = 5678;
-        _totalTransactions = 2345;
-        _pendingReports = 12;
-        _totalRevenue = 45678900;
+        _totalUsers = stats['totalUsers'] ?? 0;
+        _activeUsers = stats['activeUsers'] ?? 0;
+        _totalProducts = stats['totalProducts'] ?? 0;
+        _totalTransactions = stats['totalTransactions'] ?? 0;
+        _pendingReports = stats['pendingReports'] ?? 0;
+        _totalRevenue = (stats['totalRevenue'] ?? 0.0).toDouble();
+        _monthlyData = monthlyStats;
+        _categoryData = categoryStats;
+        _recentActivities = activities;
         _isLoading = false;
       });
     } catch (e) {
       print('Error loading statistics: $e');
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadAppDownloadConfig() async {
+    try {
+      final config = await _appSettingsService.fetchAppDownloadConfig();
+      if (!mounted) return;
+
+      setState(() {
+        _appDownloadConfig = config;
+        _playStoreController.text = config.playStoreUrl ?? '';
+        _appStoreController.text = config.appStoreUrl ?? '';
+        _universalLinkController.text = config.universalLink ?? '';
+        _qrImageController.text = config.qrImageUrl ?? '';
+        _isLoadingAppConfig = false;
+      });
+    } catch (e) {
+      debugPrint('앱 다운로드 설정 불러오기 실패: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoadingAppConfig = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('앱 다운로드 설정을 불러오지 못했습니다'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAppDownloadConfig() async {
+    setState(() {
+      _isSavingAppConfig = true;
+    });
+
+    final updatedConfig = AppDownloadConfig(
+      id: _appDownloadConfig.id ?? 'default',
+      playStoreUrl: _playStoreController.text.trim().isEmpty
+          ? null
+          : _playStoreController.text.trim(),
+      appStoreUrl: _appStoreController.text.trim().isEmpty
+          ? null
+          : _appStoreController.text.trim(),
+      universalLink: _universalLinkController.text.trim().isEmpty
+          ? null
+          : _universalLinkController.text.trim(),
+      qrImageUrl: _qrImageController.text.trim().isEmpty
+          ? null
+          : _qrImageController.text.trim(),
+    );
+
+    final success = await _appSettingsService.upsertAppDownloadConfig(updatedConfig);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isSavingAppConfig = false;
+      if (success) {
+        _appDownloadConfig = updatedConfig.copyWith(updatedAt: DateTime.now());
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? '앱 다운로드 설정이 저장되었습니다' : '앱 다운로드 설정 저장에 실패했습니다'),
+        backgroundColor: success ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
+  void _resetAppDownloadConfigToDefault() {
+    final defaults = AppDownloadConfig.defaults();
+    setState(() {
+      _appDownloadConfig = defaults;
+      _playStoreController.text = defaults.playStoreUrl ?? '';
+      _appStoreController.text = defaults.appStoreUrl ?? '';
+      _universalLinkController.text = defaults.universalLink ?? '';
+      _qrImageController.text = defaults.qrImageUrl ?? '';
+    });
   }
 
   @override
@@ -518,31 +637,31 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
             children: [
               _buildStatCard(
                 title: '총 사용자',
-                value: _totalUsers.toString(),
+                value: _formatStatValue(_totalUsers),
                 icon: Icons.people,
                 color: Colors.blue,
-                trend: '+12%',
+                trend: _calculateTrend(_totalUsers, _activeUsers),
               ),
               _buildStatCard(
                 title: '활성 사용자',
-                value: _activeUsers.toString(),
+                value: _formatStatValue(_activeUsers),
                 icon: Icons.person_pin,
                 color: Colors.green,
-                trend: '+8%',
+                trend: _calculateActiveUserTrend(),
               ),
               _buildStatCard(
                 title: '총 상품',
-                value: _totalProducts.toString(),
+                value: _formatStatValue(_totalProducts),
                 icon: Icons.inventory,
                 color: Colors.orange,
-                trend: '+23%',
+                trend: _calculateProductTrend(),
               ),
               _buildStatCard(
                 title: '총 거래',
-                value: _totalTransactions.toString(),
+                value: _formatStatValue(_totalTransactions),
                 icon: Icons.receipt_long,
                 color: Colors.purple,
-                trend: '+15%',
+                trend: _calculateTransactionTrend(),
               ),
             ],
           ),
@@ -558,11 +677,11 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
                 flex: 2,
                 child: _buildChartCard(
                   title: '월별 거래 추이',
-                  child: Container(
+                  child: SizedBox(
                     height: 300,
-                    child: const Center(
-                      child: Text('차트 구현 예정'),
-                    ),
+                    child: _monthlyData.isEmpty 
+                      ? const Center(child: CircularProgressIndicator())
+                      : MonthlyRevenueChart(data: _monthlyData),
                   ),
                 ),
               ),
@@ -573,12 +692,39 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
               Expanded(
                 child: _buildChartCard(
                   title: '카테고리별 판매',
-                  child: Container(
+                  child: SizedBox(
                     height: 300,
-                    child: const Center(
-                      child: Text('파이 차트 구현 예정'),
-                    ),
+                    child: _categoryData.isEmpty 
+                      ? const Center(child: CircularProgressIndicator())
+                      : CategoryPieChart(data: _categoryData),
                   ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 30),
+          
+          // 신고 현황 섹션
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 실시간 신고 대시보드
+              Expanded(
+                flex: 2,
+                child: _buildChartCard(
+                  title: '실시간 신고 현황',
+                  child: const RealtimeReportDashboard(),
+                ),
+              ),
+              
+              const SizedBox(width: 20),
+              
+              // 신고 통계 차트
+              Expanded(
+                child: _buildChartCard(
+                  title: '신고 통계',
+                  child: const ReportStatsChart(),
                 ),
               ),
             ],
@@ -729,30 +875,67 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '최근 활동',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '최근 활동',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextButton(
+                onPressed: _loadStatistics,
+                child: const Text('새로고침'),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
-          ...List.generate(5, (index) => _buildActivityItem(index)),
+          if (_recentActivities.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('최근 활동이 없습니다'),
+              ),
+            )
+          else
+            ...(_recentActivities.take(10).map((activity) => 
+              _buildActivityItemFromData(activity)).toList()),
         ],
       ),
     );
   }
 
-  Widget _buildActivityItem(int index) {
-    final activities = [
-      {'type': '신규 가입', 'user': '김민수', 'time': '5분 전'},
-      {'type': '상품 등록', 'user': '이영희', 'time': '12분 전'},
-      {'type': '거래 완료', 'user': '박철수', 'time': '30분 전'},
-      {'type': '신고 접수', 'user': '정미경', 'time': '1시간 전'},
-      {'type': '리뷰 작성', 'user': '홍길동', 'time': '2시간 전'},
-    ];
+  Widget _buildActivityItemFromData(Map<String, dynamic> activity) {
+    IconData icon;
+    Color iconColor;
     
-    final activity = activities[index];
+    switch (activity['type']) {
+      case '신규 가입':
+        icon = Icons.person_add;
+        iconColor = Colors.green;
+        break;
+      case '상품 등록':
+        icon = Icons.inventory;
+        iconColor = Colors.blue;
+        break;
+      case '거래 완료':
+        icon = Icons.check_circle;
+        iconColor = Colors.purple;
+        break;
+      case '거래 생성':
+        icon = Icons.shopping_cart;
+        iconColor = Colors.orange;
+        break;
+      case '거래 취소':
+        icon = Icons.cancel;
+        iconColor = Colors.red;
+        break;
+      default:
+        icon = Icons.info;
+        iconColor = Colors.grey;
+    }
     
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -765,13 +948,11 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-            child: Text(
-              activity['user']!.substring(0, 1),
-              style: const TextStyle(
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.bold,
-              ),
+            backgroundColor: iconColor.withOpacity(0.1),
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: 20,
             ),
           ),
           const SizedBox(width: 12),
@@ -784,17 +965,23 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
                     style: const TextStyle(color: Colors.black87),
                     children: [
                       TextSpan(
-                        text: activity['user'],
+                        text: activity['user'] ?? '알 수 없음',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const TextSpan(text: '님이 '),
                       TextSpan(text: activity['type']),
-                      const TextSpan(text: '했습니다'),
+                      if (activity['productTitle'] != null) ...[
+                        const TextSpan(text: ' - '),
+                        TextSpan(
+                          text: activity['productTitle'],
+                          style: const TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 Text(
-                  activity['time']!,
+                  activity['displayTime'] ?? '',
                   style: TextStyle(
                     color: Colors.grey[600],
                     fontSize: 12,
@@ -803,6 +990,14 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
               ],
             ),
           ),
+          if (activity['type'] == '상품 등록')
+            IconButton(
+              icon: const Icon(Icons.visibility, size: 18),
+              onPressed: () {
+                // Navigate to product detail
+                context.push('/product/${activity['productId']}');
+              },
+            ),
         ],
       ),
     );
@@ -839,8 +1034,189 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
   }
 
   Widget _buildSettings() {
-    return const Center(
-      child: Text('시스템 설정 페이지'),
+    if (_isLoadingAppConfig) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '시스템 설정',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '앱 다운로드 및 QR 코드 설정을 관리하세요. 변경 사항은 즉시 사용자에게 반영됩니다.',
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          _buildAppDownloadSettingsCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppDownloadSettingsCard() {
+    final lastUpdated = _appDownloadConfig.updatedAt;
+    final lastUpdatedText = lastUpdated != null
+        ? '마지막 수정: ${lastUpdated.toLocal().toString().split('.').first}'
+        : '마지막 수정 정보가 없습니다';
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.qr_code_2,
+                  color: AppTheme.primaryColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '앱 다운로드 설정',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      lastUpdatedText,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _isSavingAppConfig ? null : _resetAppDownloadConfigToDefault,
+                icon: const Icon(Icons.restore),
+                label: const Text('기본값 불러오기'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _buildSettingsField(
+            label: 'Google Play 링크',
+            controller: _playStoreController,
+            hint: 'https://play.google.com/store/apps/details?id=...',
+          ),
+          _buildSettingsField(
+            label: 'App Store 링크',
+            controller: _appStoreController,
+            hint: 'https://apps.apple.com/app/...',
+          ),
+          _buildSettingsField(
+            label: '앱 다운로드 링크 (QR 생성용)',
+            controller: _universalLinkController,
+            hint: 'https://www.everseconds.com/app',
+          ),
+          _buildSettingsField(
+            label: 'QR 이미지 URL (선택)',
+            controller: _qrImageController,
+            hint: '직접 생성한 QR 이미지 URL (선택사항)',
+            helper: '입력하지 않으면 링크로 QR 코드를 자동 생성합니다.',
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: _isSavingAppConfig ? null : _saveAppDownloadConfig,
+              icon: _isSavingAppConfig
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(_isSavingAppConfig ? '저장중...' : '저장'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsField({
+    required String label,
+    required TextEditingController controller,
+    String? hint,
+    String? helper,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            decoration: InputDecoration(
+              hintText: hint,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: AppTheme.primaryColor),
+              ),
+            ),
+          ),
+          if (helper != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              helper,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -848,5 +1224,57 @@ class _WebAdminDashboardState extends State<WebAdminDashboard> {
     return const Center(
       child: Text('도움말 페이지'),
     );
+  }
+
+  // Helper methods for formatting and calculations
+  String _formatStatValue(int value) {
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}M';
+    } else if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}K';
+    } else {
+      return value.toString();
+    }
+  }
+
+  String _calculateTrend(int total, int active) {
+    if (total == 0) return '0%';
+    final percentage = (active / total * 100).toStringAsFixed(1);
+    return '+$percentage%';
+  }
+
+  String _calculateActiveUserTrend() {
+    if (_monthlyData.length >= 2) {
+      final lastMonth = _monthlyData[_monthlyData.length - 1]['newUsers'] ?? 0;
+      final previousMonth = _monthlyData[_monthlyData.length - 2]['newUsers'] ?? 0;
+      if (previousMonth > 0) {
+        final change = ((lastMonth - previousMonth) / previousMonth * 100).toStringAsFixed(1);
+        return lastMonth >= previousMonth ? '+$change%' : '$change%';
+      }
+    }
+    return '+0%';
+  }
+
+  String _calculateProductTrend() {
+    // Calculate based on monthly data if available
+    if (_monthlyData.isNotEmpty) {
+      final thisMonth = _monthlyData.last['transactions'] ?? 0;
+      if (thisMonth > 0) {
+        return '+${(thisMonth / 10).toStringAsFixed(0)}%'; // Rough estimate
+      }
+    }
+    return '+0%';
+  }
+
+  String _calculateTransactionTrend() {
+    if (_monthlyData.length >= 2) {
+      final lastMonth = _monthlyData[_monthlyData.length - 1]['transactions'] ?? 0;
+      final previousMonth = _monthlyData[_monthlyData.length - 2]['transactions'] ?? 0;
+      if (previousMonth > 0) {
+        final change = ((lastMonth - previousMonth) / previousMonth * 100).toStringAsFixed(1);
+        return lastMonth >= previousMonth ? '+$change%' : '$change%';
+      }
+    }
+    return '+0%';
   }
 }

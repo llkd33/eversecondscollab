@@ -43,21 +43,21 @@ class TransactionModel {
 
   // 데이터 검증 로직
   void _validate() {
-    if (id.isEmpty) throw ArgumentError('Transaction ID cannot be empty');
-    if (productId.isEmpty) throw ArgumentError('Product ID cannot be empty');
-    if (buyerId.isEmpty) throw ArgumentError('Buyer ID cannot be empty');
-    if (sellerId.isEmpty) throw ArgumentError('Seller ID cannot be empty');
-    if (buyerId == sellerId) throw ArgumentError('Buyer and seller cannot be the same');
-    if (price <= 0) throw ArgumentError('Transaction price must be positive');
-    if (resaleFee < 0) throw ArgumentError('Resale fee cannot be negative');
-    if (resaleFee > price) throw ArgumentError('Resale fee cannot exceed product price');
-    if (!TransactionStatus.isValid(status)) throw ArgumentError('Invalid transaction status');
-    if (!TransactionType.isValid(transactionType)) throw ArgumentError('Invalid transaction type');
+    if (id.isEmpty) throw ArgumentError('거래 ID는 비어있을 수 없습니다');
+    if (productId.isEmpty) throw ArgumentError('상품 ID는 비어있을 수 없습니다');
+    if (buyerId.isEmpty) throw ArgumentError('구매자 ID는 비어있을 수 없습니다');
+    if (sellerId.isEmpty) throw ArgumentError('판매자 ID는 비어있을 수 없습니다');
+    if (buyerId == sellerId) throw ArgumentError('구매자와 판매자는 같을 수 없습니다');
+    if (price <= 0) throw ArgumentError('거래 금액은 0보다 커야 합니다');
+    if (resaleFee < 0) throw ArgumentError('대신판매 수수료는 음수일 수 없습니다');
+    if (resaleFee > price) throw ArgumentError('대신판매 수수료는 상품 가격보다 클 수 없습니다');
+    if (!TransactionStatus.isValid(status)) throw ArgumentError('유효하지 않은 거래 상태입니다');
+    if (!TransactionType.isValid(transactionType)) throw ArgumentError('유효하지 않은 거래 유형입니다');
     if (resellerId != null && resellerId == sellerId) {
-      throw ArgumentError('Reseller cannot be the same as seller');
+      throw ArgumentError('대신판매자는 판매자와 같을 수 없습니다');
     }
     if (resellerId != null && resellerId == buyerId) {
-      throw ArgumentError('Reseller cannot be the same as buyer');
+      throw ArgumentError('대신판매자는 구매자와 같을 수 없습니다');
     }
   }
 

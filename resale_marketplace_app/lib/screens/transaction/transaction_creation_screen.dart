@@ -5,8 +5,11 @@ import '../../services/transaction_service.dart';
 import '../../services/chat_service.dart';
 import '../../models/product_model.dart';
 import '../../models/transaction_model.dart';
+import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/safe_network_image.dart';
+import '../../services/user_service.dart';
+import '../../services/account_encryption_service.dart';
 
 class TransactionCreationScreen extends StatefulWidget {
   final ProductModel product;
@@ -32,11 +35,17 @@ class TransactionCreationScreen extends StatefulWidget {
 class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
   final TransactionService _transactionService = TransactionService();
   final ChatService _chatService = ChatService();
+  final UserService _userService = UserService();
 
   String _selectedTransactionType = TransactionType.normal;
   int _resaleFee = 0;
   final _resaleFeeController = TextEditingController();
   bool _isLoading = false;
+  
+  // 💳 계좌정보 관련
+  UserModel? _sellerInfo;
+  Map<String, dynamic>? _productAccountInfo;
+  bool _isLoadingAccountInfo = false;
 
   // 대신판매 거래 여부
   bool get isResaleTransaction => widget.resellerId != null;
@@ -48,6 +57,48 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
       // 대신판매 수수료 기본값 설정 (10%)
       _resaleFee = (widget.product.price * 0.1).round();
       _resaleFeeController.text = _resaleFee.toString();
+    }
+    // 계좌정보 로드
+    _loadAccountInfo();
+  }
+  
+  // 💳 계좌정보 로드
+  Future<void> _loadAccountInfo() async {
+    setState(() {
+      _isLoadingAccountInfo = true;
+    });
+    
+    try {
+      // 판매자 정보 가져오기
+      _sellerInfo = await _userService.getUserById(widget.sellerId);
+      
+      // 상품별 계좌정보 가져오기 (DB 함수 사용)
+      // TODO: ProductService에 getProductAccountInfo 메서드 추가 필요
+      // 임시로 상품 기본 정보 사용
+      if (widget.product.hasCustomAccount) {
+        _productAccountInfo = {
+          'bank_name': widget.product.transactionBankName,
+          'account_holder': widget.product.transactionAccountHolder,
+          'use_custom': true,
+        };
+      } else {
+        // 기본 계좌 사용
+        if (_sellerInfo?.hasAccountInfo == true) {
+          _productAccountInfo = {
+            'bank_name': _sellerInfo!.bankName,
+            'account_holder': _sellerInfo!.accountHolder,
+            'use_custom': false,
+          };
+        }
+      }
+    } catch (e) {
+      print('계좌정보 로드 실패: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingAccountInfo = false;
+        });
+      }
     }
   }
 
@@ -135,6 +186,12 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
             // 거래 타입 선택
             _buildTransactionTypeSection(theme),
             const SizedBox(height: 24),
+
+            // 💳 계좌정보 표시 (일반거래 선택시)
+            if (_selectedTransactionType == TransactionType.normal) ...[
+              _buildAccountInfoSection(theme),
+              const SizedBox(height: 24),
+            ],
 
             // 대신판매 수수료 설정 (대신판매 거래인 경우만)
             if (isResaleTransaction) ...[
@@ -507,6 +564,207 @@ class _TransactionCreationScreenState extends State<TransactionCreationScreen> {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // 💳 계좌정보 섹션
+  Widget _buildAccountInfoSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_balance,
+                color: Colors.blue[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '판매자 계좌정보',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          if (_isLoadingAccountInfo)
+            // 로딩 상태
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.blue[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '계좌정보를 불러오는 중...',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.blue[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_productAccountInfo != null)
+            // 계좌정보 표시
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '은행명',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        _productAccountInfo!['bank_name'] ?? '-',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '예금주',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        _productAccountInfo!['account_holder'] ?? '-',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '계좌번호',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        '거래 생성 후 공개됩니다',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.orange[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 14,
+                        color: Colors.blue[600],
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          _productAccountInfo!['use_custom'] == true
+                              ? '이 상품 전용 계좌입니다'
+                              : '판매자의 기본 계좌입니다',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.blue[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          else
+            // 계좌정보 없음
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange[300]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '판매자가 계좌정보를 등록하지 않았습니다.\n안전거래를 이용해 주세요.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange[700],
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+          // 안내 메시지
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue[100],
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '일반거래에서는 위 계좌로 직접 입금하시면 됩니다.\n보다 안전한 거래를 원하시면 안전거래를 선택해 주세요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.blue[700],
+                height: 1.3,
+              ),
+            ),
+          ),
         ],
       ),
     );

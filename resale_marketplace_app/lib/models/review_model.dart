@@ -37,14 +37,14 @@ class ReviewModel {
 
   // 데이터 검증 로직
   void _validate() {
-    if (id.isEmpty) throw ArgumentError('Review ID cannot be empty');
-    if (reviewerId.isEmpty) throw ArgumentError('Reviewer ID cannot be empty');
-    if (reviewedUserId.isEmpty) throw ArgumentError('Reviewed user ID cannot be empty');
-    if (transactionId.isEmpty) throw ArgumentError('Transaction ID cannot be empty');
-    if (reviewerId == reviewedUserId) throw ArgumentError('Cannot review yourself');
-    if (rating < 1 || rating > 5) throw ArgumentError('Rating must be between 1 and 5');
-    if (comment.isEmpty) throw ArgumentError('Review comment cannot be empty');
-    if (comment.length > 500) throw ArgumentError('Review comment too long (max 500 characters)');
+    if (id.isEmpty) throw ArgumentError('리뷰 ID는 비어있을 수 없습니다');
+    if (reviewerId.isEmpty) throw ArgumentError('리뷰어 ID는 비어있을 수 없습니다');
+    if (reviewedUserId.isEmpty) throw ArgumentError('리뷰 대상자 ID는 비어있을 수 없습니다');
+    if (transactionId.isEmpty) throw ArgumentError('거래 ID는 비어있을 수 없습니다');
+    if (reviewerId == reviewedUserId) throw ArgumentError('자신을 리뷰할 수 없습니다');
+    if (rating < 1 || rating > 5) throw ArgumentError('별점은 1점에서 5점 사이여야 합니다');
+    if (comment.isEmpty) throw ArgumentError('리뷰 내용은 비어있을 수 없습니다');
+    if (comment.length > 500) throw ArgumentError('리뷰 내용이 너무 깁니다 (최대 500자)');
   }
 
   // JSON에서 Review 객체 생성

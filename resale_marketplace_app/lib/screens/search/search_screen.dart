@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/common/app_input.dart';
-import '../../widgets/common/app_card.dart';
-import '../../widgets/common/app_button.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/common/loading_widget.dart';
+import '../../widgets/common/offline_banner.dart';
 import '../../services/search_service.dart';
 import '../../models/product_model.dart';
 import '../../utils/error_handler.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({Key? key}) : super(key: key);
+  final String? initialQuery;
+
+  const SearchScreen({Key? key, this.initialQuery}) : super(key: key);
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -23,16 +25,26 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
   List<String> _popularSearchTerms = [];
   List<String> _recentSearchTerms = [];
   List<String> _categories = [];
+  List<String> _autoCompleteTerms = [];
   
   SearchFilter _currentFilter = const SearchFilter();
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _hasMore = true;
+  bool _showSuggestions = true;
+  
+  final FocusNode _searchFocusNode = FocusNode();
   
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
+    if (widget.initialQuery != null) {
+      _searchController.text = widget.initialQuery!;
+      _performSearch();
+    } else {
+      _loadInitialData();
+    }
+    _searchController.addListener(_onSearchTextChanged);
   }
 
   Future<void> _loadInitialData() async {
@@ -44,22 +56,53 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
       ]);
       
       setState(() {
-        _popularSearchTerms = results[0] as List<String>;
-        _recentSearchTerms = results[1] as List<String>;
-        _categories = results[2] as List<String>;
+        _popularSearchTerms = results[0];
+        _recentSearchTerms = results[1];
+        _categories = results[2];
       });
     } catch (error) {
-      showErrorSnackBar(context, error);
+      if (mounted) {
+        showErrorSnackBar(context, error);
+      }
+    }
+  }
+
+  void _onSearchTextChanged() {
+    final query = _searchController.text;
+    if (query.isNotEmpty) {
+      _loadAutoComplete(query);
+    } else {
+      setState(() {
+        _autoCompleteTerms.clear();
+        _showSuggestions = true;
+      });
+    }
+  }
+
+  Future<void> _loadAutoComplete(String query) async {
+    try {
+      final suggestions = await _searchService.getAutoCompleteTerms(query);
+      if (!mounted) return;
+      setState(() {
+        _autoCompleteTerms = suggestions;
+      });
+    } catch (e) {
+      print('자동완성 로드 실패: $e');
     }
   }
 
   Future<void> _performSearch({bool isNewSearch = true}) async {
+    final query = _searchController.text.trim();
+    
     if (isNewSearch) {
       setState(() {
         _isLoading = true;
         _searchResults.clear();
         _hasMore = true;
+        _showSuggestions = false;
+        _autoCompleteTerms.clear();
       });
+      _searchFocusNode.unfocus();
     } else {
       setState(() {
         _isLoadingMore = true;
@@ -67,11 +110,11 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
     }
 
     try {
-      final query = _searchController.text.trim();
-      
-      // 검색어 저장
+      // 검색어 저장 (백그라운드에서)
       if (query.isNotEmpty && isNewSearch) {
-        await _searchService.saveSearchTerm(query);
+        _searchService.saveSearchTerm(query).catchError((e) {
+          print('검색어 저장 실패: $e');
+        });
       }
       
       final filter = isNewSearch 
@@ -92,8 +135,15 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
         _currentFilter = result.filter;
         _hasMore = result.hasMore;
       });
+
+      // 검색 성공 시 검색어 업데이트
+      if (isNewSearch) {
+        await _loadInitialData();
+      }
     } catch (error) {
-      showErrorSnackBar(context, error, onRetry: () => _performSearch(isNewSearch: isNewSearch));
+      if (mounted) {
+        showErrorSnackBar(context, error, onRetry: () => _performSearch(isNewSearch: isNewSearch));
+      }
     } finally {
       setState(() {
         _isLoading = false;
@@ -143,44 +193,80 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
             child: Row(
               children: [
                 Expanded(
-                  child: AppSearchField(
+                  child: TextField(
                     controller: _searchController,
-                    hint: '상품명, 카테고리를 검색하세요',
-                    onChanged: (value) {
-                      // 실시간 검색은 성능상 제외
-                    },
-                    onClear: () {
-                      _searchController.clear();
+                    focusNode: _searchFocusNode,
+                    decoration: InputDecoration(
+                      hintText: '상품명, 카테고리를 검색하세요',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchResults.clear();
+                                  _showSuggestions = true;
+                                  _autoCompleteTerms.clear();
+                                });
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primaryColor),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                    ),
+                    onSubmitted: (value) => _performSearch(),
+                    onTap: () {
                       setState(() {
-                        _searchResults.clear();
+                        _showSuggestions = true;
                       });
                     },
                   ),
                 ),
                 const SizedBox(width: AppTheme.spacingSm),
-                AppIconButton(
+                IconButton(
                   onPressed: () => _performSearch(),
-                  icon: Icons.search,
+                  icon: const Icon(Icons.search),
                   color: AppTheme.primaryColor,
                 ),
                 const SizedBox(width: AppTheme.spacingSm),
-                AppIconButton(
+                IconButton(
                   onPressed: _showFilterBottomSheet,
-                  icon: Icons.tune,
-                  color: _hasActiveFilters() ? AppTheme.primaryColor : AppTheme.textSecondary,
+                  icon: const Icon(Icons.tune),
+                  color: _hasActiveFilters() ? AppTheme.primaryColor : Colors.grey,
                 ),
               ],
             ),
           ),
+          
+          // 자동완성 제안
+          if (_autoCompleteTerms.isNotEmpty && _searchController.text.isNotEmpty && _showSuggestions)
+            _buildAutoCompleteList(),
           
           // 필터 태그
           if (_hasActiveFilters()) _buildFilterTags(),
           
           // 검색 결과 또는 추천 검색어
           Expanded(
-            child: _searchResults.isEmpty && !_isLoading
-                ? _buildSearchSuggestions()
-                : _buildSearchResults(),
+            child: OfflineBanner(
+              child: _searchResults.isEmpty && !_isLoading && !_showSuggestions
+                  ? _buildEmptyState()
+                  : _showSuggestions
+                      ? _buildSearchSuggestions()
+                      : _buildSearchResults(),
+            ),
           ),
         ],
       ),
@@ -264,7 +350,7 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
         vertical: AppTheme.spacingXs,
       ),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.1),
+        color: AppTheme.primaryColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(color: AppTheme.primaryColor),
       ),
@@ -413,11 +499,62 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
     );
   }
 
+  Widget _buildAutoCompleteList() {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: _autoCompleteTerms.map((term) {
+          return ListTile(
+            dense: true,
+            leading: const Icon(Icons.search, size: 16, color: Colors.grey),
+            title: Text(term),
+            onTap: () => _onSearchTermTap(term),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.spacingMd,
+              vertical: 4,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '\'${_searchController.text}\'에 대한\n검색 결과가 없습니다',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '다른 키워드로 검색해보세요',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchResults() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const LoadingWidget.center(message: '검색 중...');
     }
 
     return NotificationListener<ScrollNotification>(
@@ -429,24 +566,64 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
         }
         return false;
       },
-      child: ListView.builder(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
-        itemCount: _searchResults.length + (_hasMore ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _searchResults.length) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(AppTheme.spacingMd),
-                child: CircularProgressIndicator(),
+      child: Column(
+        children: [
+          // 검색 결과 헤더
+          if (_searchResults.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.spacingMd,
+                vertical: AppTheme.spacingSm,
               ),
-            );
-          }
+              child: Row(
+                children: [
+                  Text(
+                    '\'${_searchController.text}\'',
+                    style: const TextStyle(
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(' 검색 결과 ${_searchResults.length}개'),
+                ],
+              ),
+            ),
           
-          return Padding(
-            padding: const EdgeInsets.only(bottom: AppTheme.spacingMd),
-            child: ProductCard(product: _searchResults[index]),
-          );
-        },
+          // 상품 리스트
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.75,
+                crossAxisSpacing: AppTheme.spacingMd,
+                mainAxisSpacing: AppTheme.spacingMd,
+              ),
+              itemCount: _searchResults.length + (_isLoadingMore ? 2 : 0),
+              itemBuilder: (context, index) {
+                if (index >= _searchResults.length) {
+                  return Card(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.grey[100],
+                      ),
+                      child: const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                  );
+                }
+                
+                final product = _searchResults[index];
+                return ProductCard(
+                  product: product,
+                  onTap: () => context.push('/product/detail/${product.id}'),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -463,6 +640,7 @@ class _SearchScreenState extends State<SearchScreen> with ErrorHandlerMixin {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 }
@@ -637,9 +815,12 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
     return Row(
       children: [
         Expanded(
-          child: AppTextField(
+          child: TextField(
             controller: _minPriceController,
-            hint: '최소 가격',
+            decoration: const InputDecoration(
+              hintText: '최소 가격',
+              border: OutlineInputBorder(),
+            ),
             keyboardType: TextInputType.number,
             onChanged: (value) {
               final price = double.tryParse(value);
@@ -653,9 +834,12 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
         const Text('~'),
         const SizedBox(width: AppTheme.spacingMd),
         Expanded(
-          child: AppTextField(
+          child: TextField(
             controller: _maxPriceController,
-            hint: '최대 가격',
+            decoration: const InputDecoration(
+              hintText: '최대 가격',
+              border: OutlineInputBorder(),
+            ),
             keyboardType: TextInputType.number,
             onChanged: (value) {
               final price = double.tryParse(value);

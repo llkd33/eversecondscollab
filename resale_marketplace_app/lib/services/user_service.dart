@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:postgrest/postgrest.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
@@ -157,10 +159,12 @@ class UserService {
     String? profileImage,
   }) async {
     try {
+      final tempPassword = _generateSecurePassword();
+
       // Auth에 사용자 생성
       final authResponse = await _client.auth.signUp(
         email: email,
-        password: phone, // 임시로 전화번호를 비밀번호로 사용
+        password: tempPassword,
         data: {'name': name, 'phone': phone},
       );
 
@@ -279,9 +283,21 @@ class UserService {
               tableUpdated = true;
             } catch (retryError) {
               print('Users 테이블 재시도 실패: $retryError');
-            }
-          }
-        }
+    }
+  }
+
+  String _generateSecurePassword({int length = 32}) {
+    final random = Random.secure();
+    final buffer = StringBuffer();
+
+    while (buffer.length < length) {
+      final bytes = List<int>.generate(length, (_) => random.nextInt(256));
+      buffer.write(base64Url.encode(bytes));
+    }
+
+    return buffer.toString().substring(0, length);
+  }
+}
       } catch (e) {
         print('Error updating user profile: $e');
       }

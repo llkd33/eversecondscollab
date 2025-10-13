@@ -1,467 +1,207 @@
 import 'package:flutter/material.dart';
-import '../../services/transaction_service.dart';
-import '../../services/auth_service.dart';
-import '../../models/transaction_model.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/safe_network_image.dart';
 
 class RevenueManagementScreen extends StatefulWidget {
   const RevenueManagementScreen({super.key});
 
   @override
-  State<RevenueManagementScreen> createState() =>
-      _RevenueManagementScreenState();
+  State<RevenueManagementScreen> createState() => _RevenueManagementScreenState();
 }
 
-class _RevenueManagementScreenState extends State<RevenueManagementScreen>
+class _RevenueManagementScreenState extends State<RevenueManagementScreen> 
     with SingleTickerProviderStateMixin {
-  final TransactionService _transactionService = TransactionService();
-  final AuthService _authService = AuthService();
-
   late TabController _tabController;
-  List<TransactionModel> _sellTransactions = [];
-  List<TransactionModel> _resellTransactions = [];
-  Map<String, dynamic> _stats = {};
-  bool _isLoading = true;
-  String? _currentUserId;
-
-  // 수익 통계
-  int _totalSellRevenue = 0;
-  int _totalResellRevenue = 0;
-  int _thisMonthSellRevenue = 0;
-  int _thisMonthResellRevenue = 0;
-
+  String _selectedPeriod = '이번 달';
+  
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadRevenueData();
+    _tabController = TabController(length: 3, vsync: this);
   }
-
+  
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
   }
-
-  Future<void> _loadRevenueData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final user = await _authService.getCurrentUser();
-      final userId = user?.id;
-      if (userId == null) return;
-
-      _currentUserId = userId;
-
-      // 판매 거래 내역 조회
-      final sellTransactions = await _transactionService.getMyTransactions(
-        userId: userId,
-        role: 'seller',
-        status: TransactionStatus.completed,
-      );
-
-      // 대신판매 거래 내역 조회
-      final resellTransactions = await _transactionService.getMyTransactions(
-        userId: userId,
-        role: 'reseller',
-        status: TransactionStatus.completed,
-      );
-
-      // 거래 통계 조회
-      final stats = await _transactionService.getTransactionStats(userId);
-
-      if (mounted) {
-        setState(() {
-          _sellTransactions = sellTransactions;
-          _resellTransactions = resellTransactions;
-          _stats = stats;
-        });
-
-        _calculateRevenue();
-      }
-    } catch (e) {
-      print('Error loading revenue data: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _calculateRevenue() {
-    final now = DateTime.now();
-    final thisMonth = DateTime(now.year, now.month);
-
-    // 판매 수익 계산
-    _totalSellRevenue = _sellTransactions.fold(0, (sum, transaction) {
-      return sum + transaction.sellerAmount;
-    });
-
-    _thisMonthSellRevenue = _sellTransactions
-        .where(
-          (transaction) => transaction.completedAt?.isAfter(thisMonth) == true,
-        )
-        .fold(0, (sum, transaction) => sum + transaction.sellerAmount);
-
-    // 대신판매 수익 계산
-    _totalResellRevenue = _resellTransactions.fold(0, (sum, transaction) {
-      return sum + transaction.resellerCommission;
-    });
-
-    _thisMonthResellRevenue = _resellTransactions
-        .where(
-          (transaction) => transaction.completedAt?.isAfter(thisMonth) == true,
-        )
-        .fold(0, (sum, transaction) => sum + transaction.resellerCommission);
-  }
-
+  
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('수익 관리'),
-        centerTitle: true,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '판매 수익'),
-            Tab(text: '대신판매 수익'),
+      backgroundColor: AppTheme.backgroundColor,
+      appBar: CommonAppBar(
+        title: '수익 관리',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: () {
+              // Export revenue data
+              _showExportOptions();
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Revenue Summary Card
+          _RevenueSummaryCard(),
+          
+          // Period Selector
+          _PeriodSelector(
+            selectedPeriod: _selectedPeriod,
+            onPeriodChanged: (period) {
+              setState(() {
+                _selectedPeriod = period;
+              });
+            },
+          ),
+          
+          // Tab Bar
+          Container(
+            color: Colors.white,
+            child: TabBar(
+              controller: _tabController,
+              labelColor: AppTheme.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppTheme.primaryColor,
+              tabs: const [
+                Tab(text: '전체'),
+                Tab(text: '직접판매'),
+                Tab(text: '대신팔기'),
+              ],
+            ),
+          ),
+          
+          // Tab Content
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _AllTransactionsList(),
+                _DirectSalesList(),
+                _ResaleSalesList(),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _WithdrawalBottomBar(),
+    );
+  }
+  
+  void _showExportOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '내보내기 형식 선택',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('PDF 파일'),
+              subtitle: const Text('인쇄 가능한 문서 형식'),
+              onTap: () {
+                Navigator.pop(context);
+                // Export as PDF
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart),
+              title: const Text('Excel 파일'),
+              subtitle: const Text('스프레드시트 형식'),
+              onTap: () {
+                Navigator.pop(context);
+                // Export as Excel
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.code),
+              title: const Text('CSV 파일'),
+              subtitle: const Text('쉼표로 구분된 데이터'),
+              onTap: () {
+                Navigator.pop(context);
+                // Export as CSV
+              },
+            ),
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // 수익 요약
-                _buildRevenueSummary(theme),
-                // 탭 뷰
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildSellRevenueTab(theme),
-                      _buildResellRevenueTab(theme),
-                    ],
-                  ),
-                ),
-              ],
-            ),
     );
   }
+}
 
-  Widget _buildRevenueSummary(ThemeData theme) {
+class _RevenueSummaryCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withOpacity(0.3),
-        border: Border(
-          bottom: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2)),
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primaryColor,
+            AppTheme.primaryColor.withOpacity(0.8),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-      ),
-      child: Column(
-        children: [
-          // 총 수익
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildRevenueCard(
-                theme: theme,
-                title: '총 수익',
-                amount: _totalSellRevenue + _totalResellRevenue,
-                color: theme.colorScheme.primary,
-                icon: Icons.account_balance_wallet,
-              ),
-              _buildRevenueCard(
-                theme: theme,
-                title: '이번 달',
-                amount: _thisMonthSellRevenue + _thisMonthResellRevenue,
-                color: Colors.green,
-                icon: Icons.trending_up,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // 세부 수익
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildRevenueCard(
-                theme: theme,
-                title: '판매 수익',
-                amount: _totalSellRevenue,
-                color: Colors.blue,
-                icon: Icons.store,
-                isSmall: true,
-              ),
-              _buildRevenueCard(
-                theme: theme,
-                title: '대신판매 수익',
-                amount: _totalResellRevenue,
-                color: Colors.orange,
-                icon: Icons.support_agent,
-                isSmall: true,
-              ),
-            ],
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildRevenueCard({
-    required ThemeData theme,
-    required String title,
-    required int amount,
-    required Color color,
-    required IconData icon,
-    bool isSmall = false,
-  }) {
-    return Container(
-      padding: EdgeInsets.all(isSmall ? 12 : 16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: isSmall ? 20 : 24),
-          SizedBox(height: isSmall ? 4 : 8),
-          Text(
-            title,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: isSmall ? 2 : 4),
-          Text(
-            _formatPrice(amount),
-            style:
-                (isSmall
-                        ? theme.textTheme.titleSmall
-                        : theme.textTheme.titleMedium)
-                    ?.copyWith(color: color, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSellRevenueTab(ThemeData theme) {
-    if (_sellTransactions.isEmpty) {
-      return _buildEmptyState(
-        theme: theme,
-        icon: Icons.store_outlined,
-        message: '판매 완료된 거래가 없습니다',
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadRevenueData,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _sellTransactions.length,
-        itemBuilder: (context, index) {
-          final transaction = _sellTransactions[index];
-          return _buildRevenueTransactionCard(
-            theme: theme,
-            transaction: transaction,
-            revenueAmount: transaction.sellerAmount,
-            revenueType: '판매 수익',
-            revenueColor: Colors.blue,
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildResellRevenueTab(ThemeData theme) {
-    if (_resellTransactions.isEmpty) {
-      return _buildEmptyState(
-        theme: theme,
-        icon: Icons.support_agent_outlined,
-        message: '대신판매 완료된 거래가 없습니다',
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadRevenueData,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _resellTransactions.length,
-        itemBuilder: (context, index) {
-          final transaction = _resellTransactions[index];
-          return _buildRevenueTransactionCard(
-            theme: theme,
-            transaction: transaction,
-            revenueAmount: transaction.resellerCommission,
-            revenueType: '대신판매 수수료',
-            revenueColor: Colors.orange,
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildRevenueTransactionCard({
-    required ThemeData theme,
-    required TransactionModel transaction,
-    required int revenueAmount,
-    required String revenueType,
-    required Color revenueColor,
-  }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 상단: 수익 타입 및 금액
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: revenueColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    revenueType,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: revenueColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '총 수익',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 14,
                 ),
-                Text(
-                  '+${_formatPrice(revenueAmount)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: revenueColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // 상품 정보
-            Row(
-              children: [
-                // 상품 이미지
-                SafeNetworkImage(
-                  imageUrl: transaction.productImage,
-                  width: 60,
-                  height: 60,
-                  fit: BoxFit.cover,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                const SizedBox(width: 12),
-                // 상품 정보 텍스트
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        transaction.productTitle ?? '상품명 없음',
-                        style: theme.textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '판매가: ${transaction.formattedPrice}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (transaction.isResaleTransaction) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          '수수료: ${transaction.formattedResaleFee}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // 거래 정보
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // 거래 상대
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '구매자',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    Text(
-                      transaction.buyerName ?? '알 수 없음',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-                // 완료 날짜
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '완료일',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    Text(
-                      transaction.completedAt != null
-                          ? _formatDate(transaction.completedAt!)
-                          : '알 수 없음',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            // 안전거래 표시 (있는 경우)
-            if (transaction.isSafeTransaction) ...[
-              const SizedBox(height: 8),
+              ),
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.security, size: 16, color: Colors.green),
+                    Icon(
+                      Icons.trending_up,
+                      size: 14,
+                      color: Colors.greenAccent[400],
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                      '안전거래',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: Colors.green,
+                      '+23.5%',
+                      style: TextStyle(
+                        color: Colors.greenAccent[400],
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -469,43 +209,725 @@ class _RevenueManagementScreenState extends State<RevenueManagementScreen>
                 ),
               ),
             ],
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '₩ 1,245,000',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _SummaryItem(
+                  label: '이번 달',
+                  value: '₩ 385,000',
+                  icon: Icons.calendar_today,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _SummaryItem(
+                  label: '출금 가능',
+                  value: '₩ 156,000',
+                  icon: Icons.account_balance_wallet,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildEmptyState({
-    required ThemeData theme,
-    required IconData icon,
-    required String message,
-  }) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+class _SummaryItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  
+  const _SummaryItem({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
         children: [
           Icon(
             icon,
-            size: 80,
-            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
+            size: 20,
+            color: Colors.white.withOpacity(0.9),
           ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 11,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  String _formatPrice(int price) {
-    return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
+class _PeriodSelector extends StatelessWidget {
+  final String selectedPeriod;
+  final Function(String) onPeriodChanged;
+  
+  const _PeriodSelector({
+    required this.selectedPeriod,
+    required this.onPeriodChanged,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    final periods = ['오늘', '이번 주', '이번 달', '3개월', '6개월', '1년'];
+    
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: periods.length,
+        itemBuilder: (context, index) {
+          final period = periods[index];
+          final isSelected = selectedPeriod == period;
+          
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(period),
+              selected: isSelected,
+              onSelected: (_) => onPeriodChanged(period),
+              selectedColor: AppTheme.primaryColor,
+              backgroundColor: Colors.grey[200],
+              labelStyle: TextStyle(
+                color: isSelected ? Colors.white : Colors.grey[700],
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
+}
 
+class _AllTransactionsList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _TransactionGroup(
+          date: '2024년 3월',
+          totalAmount: '₩ 385,000',
+          transactions: [
+            Transaction(
+              type: TransactionType.directSale,
+              productName: '나이키 운동화',
+              amount: 85000,
+              date: DateTime.now().subtract(const Duration(days: 2)),
+              status: TransactionStatus.completed,
+            ),
+            Transaction(
+              type: TransactionType.resale,
+              productName: '아이패드 프로',
+              amount: 45000,
+              commission: 6750,
+              date: DateTime.now().subtract(const Duration(days: 3)),
+              status: TransactionStatus.completed,
+            ),
+            Transaction(
+              type: TransactionType.directSale,
+              productName: '캠핑 의자',
+              amount: 35000,
+              date: DateTime.now().subtract(const Duration(days: 5)),
+              status: TransactionStatus.pending,
+            ),
+          ],
+        ),
+        _TransactionGroup(
+          date: '2024년 2월',
+          totalAmount: '₩ 520,000',
+          transactions: [
+            Transaction(
+              type: TransactionType.resale,
+              productName: '에어팟 프로',
+              amount: 180000,
+              commission: 27000,
+              date: DateTime.now().subtract(const Duration(days: 15)),
+              status: TransactionStatus.completed,
+            ),
+            Transaction(
+              type: TransactionType.directSale,
+              productName: '겨울 코트',
+              amount: 120000,
+              date: DateTime.now().subtract(const Duration(days: 18)),
+              status: TransactionStatus.completed,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DirectSalesList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _TransactionGroup(
+          date: '2024년 3월',
+          totalAmount: '₩ 255,000',
+          transactions: [
+            Transaction(
+              type: TransactionType.directSale,
+              productName: '나이키 운동화',
+              amount: 85000,
+              date: DateTime.now().subtract(const Duration(days: 2)),
+              status: TransactionStatus.completed,
+            ),
+            Transaction(
+              type: TransactionType.directSale,
+              productName: '캠핑 의자',
+              amount: 35000,
+              date: DateTime.now().subtract(const Duration(days: 5)),
+              status: TransactionStatus.pending,
+            ),
+            Transaction(
+              type: TransactionType.directSale,
+              productName: '노트북 가방',
+              amount: 45000,
+              date: DateTime.now().subtract(const Duration(days: 7)),
+              status: TransactionStatus.completed,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ResaleSalesList extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _TransactionGroup(
+          date: '2024년 3월',
+          totalAmount: '₩ 130,000 (수수료 ₩ 19,500)',
+          transactions: [
+            Transaction(
+              type: TransactionType.resale,
+              productName: '아이패드 프로',
+              amount: 45000,
+              commission: 6750,
+              date: DateTime.now().subtract(const Duration(days: 3)),
+              status: TransactionStatus.completed,
+              originalSeller: '판매자A',
+            ),
+            Transaction(
+              type: TransactionType.resale,
+              productName: '다이슨 청소기',
+              amount: 85000,
+              commission: 12750,
+              date: DateTime.now().subtract(const Duration(days: 6)),
+              status: TransactionStatus.completed,
+              originalSeller: '판매자B',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+enum TransactionType { directSale, resale }
+enum TransactionStatus { pending, completed, cancelled }
+
+class Transaction {
+  final TransactionType type;
+  final String productName;
+  final int amount;
+  final int? commission;
+  final DateTime date;
+  final TransactionStatus status;
+  final String? originalSeller;
+  
+  Transaction({
+    required this.type,
+    required this.productName,
+    required this.amount,
+    this.commission,
+    required this.date,
+    required this.status,
+    this.originalSeller,
+  });
+}
+
+class _TransactionGroup extends StatelessWidget {
+  final String date;
+  final String totalAmount;
+  final List<Transaction> transactions;
+  
+  const _TransactionGroup({
+    required this.date,
+    required this.totalAmount,
+    required this.transactions,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.backgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  date,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  totalAmount,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...transactions.map((transaction) => _TransactionItem(
+            transaction: transaction,
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+class _TransactionItem extends StatelessWidget {
+  final Transaction transaction;
+  
+  const _TransactionItem({required this.transaction});
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[200]!),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: transaction.type == TransactionType.directSale
+                ? Colors.blue[50]
+                : Colors.orange[50],
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              transaction.type == TransactionType.directSale
+                ? Icons.sell
+                : Icons.storefront,
+              size: 20,
+              color: transaction.type == TransactionType.directSale
+                ? Colors.blue
+                : Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  transaction.productName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      _formatDate(transaction.date),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    if (transaction.originalSeller != null) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '• ${transaction.originalSeller}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (transaction.commission != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '수수료 ₩${_formatNumber(transaction.commission!)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '₩${_formatNumber(transaction.amount)}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(transaction.status).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _getStatusText(transaction.status),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _getStatusColor(transaction.status),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
   String _formatDate(DateTime date) {
-    return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    final difference = now.difference(date).inDays;
+    
+    if (difference == 0) return '오늘';
+    if (difference == 1) return '어제';
+    if (difference < 7) return '$difference일 전';
+    if (difference < 30) return '${(difference / 7).floor()}주 전';
+    return '${(difference / 30).floor()}개월 전';
+  }
+  
+  String _formatNumber(int number) {
+    return number.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
+  }
+  
+  Color _getStatusColor(TransactionStatus status) {
+    switch (status) {
+      case TransactionStatus.completed:
+        return Colors.green;
+      case TransactionStatus.pending:
+        return Colors.orange;
+      case TransactionStatus.cancelled:
+        return Colors.red;
+    }
+  }
+  
+  String _getStatusText(TransactionStatus status) {
+    switch (status) {
+      case TransactionStatus.completed:
+        return '완료';
+      case TransactionStatus.pending:
+        return '대기중';
+      case TransactionStatus.cancelled:
+        return '취소됨';
+    }
+  }
+}
+
+class _WithdrawalBottomBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '출금 가능 금액',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '₩ 156,000',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      _showAccountManagement(context);
+                    },
+                    icon: const Icon(Icons.account_balance, size: 18),
+                    label: const Text('계좌 관리'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      _showWithdrawalBottomSheet(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text('출금하기'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Text(
+                '최소 출금 금액은 10,000원입니다',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _showAccountManagement(BuildContext context) {
+    // Show account management screen
+    context.push('/account-management');
+  }
+  
+  void _showWithdrawalBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '출금 신청',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  labelText: '출금 금액',
+                  prefixText: '₩ ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  helperText: '최대: ₩156,000',
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.account_balance, color: Colors.blue[700]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '국민은행',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                          Text(
+                            '123-456789-00-123',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Process withdrawal
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('출금 신청이 완료되었습니다. 1-2 영업일 내에 입금됩니다.'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    '출금 신청하기',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

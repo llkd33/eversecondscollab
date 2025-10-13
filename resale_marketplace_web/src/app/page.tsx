@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import ProductCard from '@/components/ProductCard';
 import CategoryFilter from '@/components/CategoryFilter';
-import QRCodeModal from '@/components/QRCodeModal';
 import { Product, Category, ProductStatus } from '@/types';
 
 // Mock data - In production, this would come from Supabase
@@ -69,23 +68,21 @@ export default function HomePage() {
   const [isKioskMode, setIsKioskMode] = useState(false);
   const [products, setProducts] = useState<Product[]>(mockProducts);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>(mockProducts);
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [page, setPage] = useState(1);
-  const pageSize = 12;
 
-  // Detect kiosk mode via URL param or localStorage
+  // Detect kiosk mode (could be based on URL parameter or screen size)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const kioskParam = urlParams.get('kiosk');
-    const stored = localStorage.getItem('kioskMode');
+    const checkKioskMode = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const kioskParam = urlParams.get('kiosk');
+      const isTouchDevice = 'ontouchstart' in window;
+      const isLargeScreen = window.innerWidth >= 1024;
+      
+      setIsKioskMode(kioskParam === 'true' || (isTouchDevice && isLargeScreen));
+    };
 
-    if (kioskParam === 'true' || kioskParam === 'false') {
-      const v = kioskParam === 'true';
-      setIsKioskMode(v);
-      localStorage.setItem('kioskMode', v ? 'true' : 'false');
-    } else if (stored === 'true' || stored === 'false') {
-      setIsKioskMode(stored === 'true');
-    }
+    checkKioskMode();
+    window.addEventListener('resize', checkKioskMode);
+    return () => window.removeEventListener('resize', checkKioskMode);
   }, []);
 
   // Filter products
@@ -106,7 +103,6 @@ export default function HomePage() {
     }
 
     setFilteredProducts(filtered);
-    setPage(1); // reset pagination on filter changes
   }, [selectedCategory, searchQuery, products]);
 
   return (
@@ -157,9 +153,12 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Kiosk Toggle + App Download */}
+            {/* App Download Button */}
             <button
-              onClick={() => setShowQRModal(true)}
+              onClick={() => {
+                // Show QR code modal
+                alert('앱 다운로드 QR 코드 표시');
+              }}
               className={`
                 bg-blue-600 text-white font-medium rounded-lg
                 hover:bg-blue-700 transition-colors duration-200
@@ -172,21 +171,6 @@ export default function HomePage() {
                   d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
               앱 설치
-            </button>
-            <button
-              onClick={() => {
-                const next = !isKioskMode;
-                setIsKioskMode(next);
-                localStorage.setItem('kioskMode', next ? 'true' : 'false');
-              }}
-              className={`
-                ml-2 bg-gray-100 text-gray-700 font-medium rounded-lg
-                hover:bg-gray-200 transition-colors duration-200
-                ${isKioskMode ? 'px-6 py-3 text-lg' : 'px-4 py-2 text-base'}
-              `}
-              aria-pressed={isKioskMode}
-            >
-              {isKioskMode ? '키오스크 해제' : '키오스크 모드'}
             </button>
           </div>
         </div>
@@ -211,7 +195,7 @@ export default function HomePage() {
                 : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
               }
             `}>
-              {filteredProducts.slice(0, page * pageSize).map((product) => (
+              {filteredProducts.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
@@ -240,10 +224,9 @@ export default function HomePage() {
         </div>
 
         {/* Load More Button */}
-        {filteredProducts.length > page * pageSize && (
+        {filteredProducts.length > 0 && (
           <div className="mt-8 text-center">
             <button
-              onClick={() => setPage((p) => p + 1)}
               className={`
                 bg-white border-2 border-gray-300 text-gray-700 font-medium rounded-lg
                 hover:bg-gray-50 transition-colors duration-200
@@ -271,8 +254,6 @@ export default function HomePage() {
           </svg>
         </button>
       )}
-      {/* QR Code Modal */}
-      <QRCodeModal isOpen={showQRModal} onClose={() => setShowQRModal(false)} />
     </div>
   );
 }

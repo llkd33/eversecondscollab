@@ -522,7 +522,7 @@ class _ReviewCreateScreenState extends State<ReviewCreateScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('후기 작성 실패: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('후기 작성에 실패했습니다. 다시 시도해주세요.'), backgroundColor: Colors.red),
         );
       }
     } finally {

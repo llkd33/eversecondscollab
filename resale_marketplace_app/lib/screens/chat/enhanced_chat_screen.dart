@@ -1,23 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_chat_ui/flutter_chat_ui.dart' as chatui;
-import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import '../../models/chat_message_model.dart';
 import '../../models/user_model.dart';
-import '../../providers/realtime_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/chat_service.dart';
 import '../../services/realtime_chat_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/responsive.dart';
 
 class EnhancedChatScreen extends StatefulWidget {
   final String chatRoomId;
@@ -58,6 +53,16 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
   
   late AnimationController _typingAnimationController;
   late AnimationController _fabAnimationController;
+
+  double _screenWidth(BuildContext context) =>
+      MediaQuery.of(context).size.width;
+
+  String _initial(String? value) {
+    if (value == null) return '?';
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '?';
+    return trimmed.substring(0, 1).toUpperCase();
+  }
 
   @override
   void initState() {
@@ -116,23 +121,22 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
   }
 
   Future<void> _loadChatData() async {
-    // 병렬로 데이터 로드
-    final futures = await Future.wait([
-      _chatService.getChatMessages(widget.chatRoomId),
-      _chatService.getUserById(widget.otherUserId),
-    ]);
+    final messagesFuture = _chatService.getChatRoomMessages(
+      widget.chatRoomId,
+    );
+    final userFuture = _chatService.getUserById(widget.otherUserId);
 
-    final messages = futures[0] as List<ChatMessageModel>;
-    final otherUser = futures[1] as UserModel?;
+    final messages = await messagesFuture;
+    final otherUser = await userFuture;
 
-    if (mounted) {
-      setState(() {
-        _messages = messages.reversed.toList(); // 최신 메시지가 아래에 오도록
-        _otherUser = otherUser;
-      });
-      
-      _scrollToBottom();
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _messages = messages;
+      _otherUser = otherUser;
+    });
+
+    _scrollToBottom();
   }
 
   void _setupRealtimeListeners() {
@@ -140,6 +144,9 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
       switch (event.type) {
         case ChatEventType.messageReceived:
           _handleNewMessage(event.data as ChatMessageModel);
+          break;
+        case ChatEventType.messageDelivered:
+          _handleMessageDelivered(event.data as ChatMessageModel);
           break;
         case ChatEventType.messageRead:
           _handleMessageRead(event.data as ChatMessageModel);
@@ -166,10 +173,21 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
       _scrollToBottom();
       
       // 상대방 메시지인 경우 읽음 처리
-      if (message.senderId != context.read<AuthProvider>().user?.id) {
+      if (message.senderId !=
+          context.read<AuthProvider>().currentUser?.id) {
         _realtimeChatService.markMessageAsRead(message.id);
       }
     }
+  }
+
+  void _handleMessageDelivered(ChatMessageModel message) {
+    if (!mounted) return;
+    setState(() {
+      final index = _messages.indexWhere((m) => m.id == message.id);
+      if (index != -1) {
+        _messages[index] = message;
+      }
+    });
   }
 
   void _handleMessageRead(ChatMessageModel message) {
@@ -184,7 +202,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
   }
 
   void _handleTypingEvent(String userId) {
-    if (userId != context.read<AuthProvider>().user?.id) {
+    if (userId != context.read<AuthProvider>().currentUser?.id) {
       setState(() {
         _isTyping = true;
         _typingUserId = userId;
@@ -245,16 +263,26 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
         messageType: 'text',
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('메시지 전송에 실패했습니다: $e')),
       );
     } finally {
-      setState(() => _isSending = false);
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
   }
 
   Future<void> _sendImageMessage() async {
     try {
+      final currentUserId = context.read<AuthProvider>().currentUser?.id;
+      if (currentUserId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요합니다. 다시 시도해주세요.')),
+        );
+        return;
+      }
       final List<XFile> images = await _imagePicker.pickMultiImage(
         imageQuality: 80,
         maxWidth: 1024,
@@ -270,6 +298,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
           final imageUrl = await _chatService.uploadChatImage(
             File(image.path),
             widget.chatRoomId,
+            currentUserId,
           );
           if (imageUrl != null) {
             imageUrls.add(imageUrl);
@@ -284,11 +313,14 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
         }
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('이미지 전송에 실패했습니다: $e')),
       );
     } finally {
-      setState(() => _isSending = false);
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
   }
 
@@ -331,13 +363,13 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
   }
 
   Widget _buildMessage(ChatMessageModel message) {
-    final isMe = message.senderId == context.read<AuthProvider>().user?.id;
-    final isOnline = _realtimeChatService.isUserOnline(widget.otherUserId);
+    final isMe =
+        message.senderId == context.read<AuthProvider>().currentUser?.id;
 
     return Container(
       margin: EdgeInsets.symmetric(
         vertical: 4,
-        horizontal: Responsive.width(context) * 0.04,
+        horizontal: _screenWidth(context) * 0.04,
       ),
       child: Row(
         mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -347,12 +379,12 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
             CircleAvatar(
               radius: 16,
               backgroundColor: AppTheme.primaryColor,
-              backgroundImage: message.sender?.profileImageUrl != null
-                  ? CachedNetworkImageProvider(message.sender!.profileImageUrl!)
+              backgroundImage: message.sender?.profileImage != null
+                  ? CachedNetworkImageProvider(message.sender!.profileImage!)
                   : null,
-              child: message.sender?.profileImageUrl == null
+              child: message.sender?.profileImage == null
                   ? Text(
-                      message.sender?.displayName.substring(0, 1) ?? '?',
+                      _initial(message.sender?.name),
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     )
                   : null,
@@ -367,7 +399,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      message.sender!.displayName,
+                      message.sender!.name,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.grey[600],
                       ),
@@ -407,7 +439,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
   Widget _buildMessageBubble(ChatMessageModel message, bool isMe) {
     return Container(
       constraints: BoxConstraints(
-        maxWidth: Responsive.width(context) * 0.7,
+        maxWidth: _screenWidth(context) * 0.7,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
@@ -447,17 +479,17 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
         borderRadius: BorderRadius.circular(12),
         child: CachedNetworkImage(
           imageUrl: imageUrl,
-          width: Responsive.width(context) * 0.6,
+          width: _screenWidth(context) * 0.6,
           height: 200,
           fit: BoxFit.cover,
           placeholder: (context, url) => Container(
-            width: Responsive.width(context) * 0.6,
+            width: _screenWidth(context) * 0.6,
             height: 200,
             color: Colors.grey[300],
             child: const Center(child: CircularProgressIndicator()),
           ),
           errorWidget: (context, url, error) => Container(
-            width: Responsive.width(context) * 0.6,
+            width: _screenWidth(context) * 0.6,
             height: 200,
             color: Colors.grey[300],
             child: const Icon(Icons.error),
@@ -531,19 +563,19 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
     return Container(
       margin: EdgeInsets.symmetric(
         vertical: 8,
-        horizontal: Responsive.width(context) * 0.04,
+        horizontal: _screenWidth(context) * 0.04,
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 12,
             backgroundColor: AppTheme.primaryColor,
-            backgroundImage: _otherUser?.profileImageUrl != null
-                ? CachedNetworkImageProvider(_otherUser!.profileImageUrl!)
+            backgroundImage: _otherUser?.profileImage != null
+                ? CachedNetworkImageProvider(_otherUser!.profileImage!)
                 : null,
-            child: _otherUser?.profileImageUrl == null
+            child: _otherUser?.profileImage == null
                 ? Text(
-                    _otherUser?.displayName.substring(0, 1) ?? '?',
+                    _initial(_otherUser?.name),
                     style: const TextStyle(color: Colors.white, fontSize: 10),
                   )
                 : null,
@@ -668,21 +700,22 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
                 config: Config(
                   height: 256,
                   checkPlatformCompatibility: true,
+                  categoryViewConfig: CategoryViewConfig(
+                    initCategory: Category.RECENT,
+                    backgroundColor: const Color(0xFFF2F2F2),
+                    indicatorColor: AppTheme.primaryColor,
+                    iconColor: Colors.grey,
+                    iconColorSelected: AppTheme.primaryColor,
+                    backspaceColor: AppTheme.primaryColor,
+                    categoryIcons: const CategoryIcons(),
+                    tabIndicatorAnimDuration: kTabScrollDuration,
+                  ),
                   emojiViewConfig: EmojiViewConfig(
                     emojiSizeMax: 28,
                     verticalSpacing: 0,
                     horizontalSpacing: 0,
                     gridPadding: EdgeInsets.zero,
-                    initCategory: Category.RECENT,
-                    bgColor: const Color(0xFFF2F2F2),
-                    indicatorColor: AppTheme.primaryColor,
-                    iconColor: Colors.grey,
-                    iconColorSelected: AppTheme.primaryColor,
-                    backspaceColor: AppTheme.primaryColor,
-                    skinToneDialogBgColor: Colors.white,
-                    skinToneIndicatorColor: Colors.grey,
-                    enableSkinTones: true,
-                    showRecentsTab: true,
+                    backgroundColor: const Color(0xFFF2F2F2),
                     recentsLimit: 28,
                     noRecents: const Text(
                       '최근 사용한 이모지가 없습니다',
@@ -690,9 +723,17 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
                       textAlign: TextAlign.center,
                     ),
                     loadingIndicator: const SizedBox.shrink(),
-                    tabIndicatorAnimDuration: kTabScrollDuration,
-                    categoryIcons: const CategoryIcons(),
                     buttonMode: ButtonMode.MATERIAL,
+                  ),
+                  skinToneConfig: const SkinToneConfig(
+                    enabled: true,
+                    dialogBackgroundColor: Colors.white,
+                    indicatorColor: Colors.grey,
+                  ),
+                  bottomActionBarConfig: BottomActionBarConfig(
+                    backgroundColor: const Color(0xFFF2F2F2),
+                    buttonColor: AppTheme.primaryColor,
+                    buttonIconColor: Colors.white,
                   ),
                 ),
               ),
@@ -715,12 +756,12 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
                 CircleAvatar(
                   radius: 20,
                   backgroundColor: AppTheme.primaryColor,
-                  backgroundImage: _otherUser?.profileImageUrl != null
-                      ? CachedNetworkImageProvider(_otherUser!.profileImageUrl!)
+                  backgroundImage: _otherUser?.profileImage != null
+                      ? CachedNetworkImageProvider(_otherUser!.profileImage!)
                       : null,
-                  child: _otherUser?.profileImageUrl == null
+                  child: _otherUser?.profileImage == null
                       ? Text(
-                          _otherUser?.displayName.substring(0, 1) ?? '?',
+                          _initial(_otherUser?.name),
                           style: const TextStyle(color: Colors.white),
                         )
                       : null,
@@ -747,7 +788,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _otherUser?.displayName ?? '사용자',
+                    _otherUser?.name ?? '사용자',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

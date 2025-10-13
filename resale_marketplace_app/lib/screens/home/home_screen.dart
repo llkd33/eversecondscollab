@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/search_bar.dart' as custom;
 import '../../theme/app_theme.dart';
-import '../../models/product_model.dart';
-import '../../services/product_service.dart';
-import '../../widgets/common/loading_widgets.dart';
-import '../../widgets/common/error_widgets.dart';
+import '../../widgets/common_app_bar.dart';
+import '../../widgets/search_bar.dart';
+import '../../widgets/product_card.dart';
+import '../../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,17 +16,40 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ProductService _productService = ProductService();
-  final ScrollController _scrollController = ScrollController();
-  
   String _selectedCategory = '전체';
   String _searchQuery = '';
   bool _isGridView = true;
+  final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
-  bool _hasMore = true;
-  int _currentPage = 0;
-  
-  List<ProductModel> _products = [];
+
+  // 임시 상품 데이터
+  final List<Map<String, dynamic>> _products = List.generate(20, (index) => {
+    'id': 'product_$index',
+    'title': _getProductTitle(index),
+    'price': (index + 1) * 15000 + (index % 3) * 5000,
+    'sellerName': '판매자${index + 1}',
+    'sellerLevel': (index % 5) + 1,
+    'isResaleEnabled': index % 3 == 0,
+    'location': _getLocation(index),
+    'createdAt': DateTime.now().subtract(Duration(hours: index * 2)),
+    'isFavorite': index % 7 == 0,
+  });
+
+  static String _getProductTitle(int index) {
+    final titles = [
+      '아이폰 14 Pro 256GB',
+      '나이키 에어맥스 270',
+      '맥북 프로 13인치',
+      '삼성 갤럭시 버즈',
+      '아디다스 후드티',
+      '다이슨 헤어드라이어',
+      '애플워치 시리즈 8',
+      '루이비통 가방',
+      '캐논 DSLR 카메라',
+      '플레이스테이션 5',
+    ];
+    return '${titles[index % titles.length]} $index';
+  }
 
   static String _getLocation(int index) {
     final locations = ['강남구', '서초구', '송파구', '마포구', '용산구'];
@@ -38,7 +60,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _loadProducts();
   }
 
   @override
@@ -50,121 +71,58 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onScroll() {
     if (_scrollController.position.pixels >= 
         _scrollController.position.maxScrollExtent - 200) {
-      if (_hasMore && !_isLoading) {
-        _loadMoreProducts();
-      }
+      _loadMoreProducts();
     }
   }
 
-  Future<void> _loadProducts() async {
+  void _loadMoreProducts() {
     if (_isLoading) return;
     
     setState(() {
       _isLoading = true;
     });
 
-    try {
-      final products = await _productService.getProducts(
-        category: _selectedCategory == '전체' ? null : _selectedCategory,
-        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
-        status: '판매중',
-        limit: 20,
-        offset: _currentPage * 20,
-        orderBy: 'created_at',
-        ascending: false,
-      );
-
-      setState(() {
-        if (_currentPage == 0) {
-          _products = products;
-        } else {
-          _products.addAll(products);
-        }
-        
-        _hasMore = products.length >= 20;
-        _currentPage++;
-      });
-    } catch (e) {
+    // 임시 로딩 시뮬레이션
+    Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
-        CommonSnackBar.showError(
-          context,
-          '상품을 불러오는데 실패했습니다',
-        );
+        setState(() {
+          _isLoading = false;
+          // TODO: 실제 데이터 로드
+        });
       }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadMoreProducts() async {
-    await _loadProducts();
-  }
-
-  Future<void> _refreshProducts() async {
-    setState(() {
-      _products.clear();
-      _currentPage = 0;
-      _hasMore = true;
     });
-    
-    await _loadProducts();
-  }
-
-  void _onCategoryChanged(String category) {
-    setState(() {
-      _selectedCategory = category;
-    });
-    _refreshProducts();
-  }
-
-  void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query;
-    });
-    _refreshProducts();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const HomeAppBar(),
-      body: RefreshIndicator(
-        onRefresh: _refreshProducts,
-        child: Column(
-          children: [
-            // 검색바
-            custom.CustomSearchBar(
-              hintText: '상품명, 브랜드, 판매자명으로 검색',
-              readOnly: true,
-              onTap: () {
-                context.push('/search');
-              },
-            ),
-            
-            // 카테고리 필터
-            _CategoryFilter(
-              selectedCategory: _selectedCategory,
-              onCategoryChanged: _onCategoryChanged,
-            ),
-            
-            // 뷰 전환 및 정렬 옵션
-            _buildViewControls(),
-            
-            // 상품 리스트
-            Expanded(
-              child: _products.isEmpty && !_isLoading
-                  ? _buildEmptyState()
-                  : (_isGridView ? _buildGridView() : _buildListView()),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/product/create'),
-        backgroundColor: AppTheme.primaryColor,
-        child: const Icon(Icons.add, color: Colors.white),
+      body: Column(
+        children: [
+          // 검색바
+          CustomSearchBar(
+            hintText: '상품명, 브랜드, 판매자명으로 검색',
+            onChanged: (query) {
+              setState(() {
+                _searchQuery = query;
+              });
+            },
+            onSubmitted: (query) {
+              // TODO: 검색 실행
+            },
+          ),
+          
+          // 카테고리 필터
+          const _CategoryFilter(),
+          
+          // 뷰 전환 및 정렬 옵션
+          _buildViewControls(),
+          
+          // 상품 리스트
+          Expanded(
+            child: _isGridView ? _buildGridView() : _buildListView(),
+          ),
+        ],
       ),
     );
   }
@@ -230,8 +188,20 @@ class _HomeScreenState extends State<HomeScreen> {
         
         final product = _products[index];
         return ProductCard(
-          product: product,
-          onTap: () => context.push('/product/detail/${product.id}'),
+          id: product['id'],
+          title: product['title'],
+          price: product['price'],
+          sellerName: product['sellerName'],
+          sellerLevel: product['sellerLevel'],
+          isResaleEnabled: product['isResaleEnabled'],
+          location: product['location'],
+          createdAt: product['createdAt'],
+          isFavorite: product['isFavorite'],
+          onFavoritePressed: () {
+            setState(() {
+              product['isFavorite'] = !product['isFavorite'];
+            });
+          },
         );
       },
     );
@@ -248,8 +218,14 @@ class _HomeScreenState extends State<HomeScreen> {
         
         final product = _products[index];
         return ProductListCard(
-          product: product,
-          onTap: () => context.push('/product/detail/${product.id}'),
+          id: product['id'],
+          title: product['title'],
+          price: product['price'],
+          sellerName: product['sellerName'],
+          sellerLevel: product['sellerLevel'],
+          isResaleEnabled: product['isResaleEnabled'],
+          location: product['location'],
+          createdAt: product['createdAt'],
         );
       },
     );
@@ -311,81 +287,26 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.shopping_bag_outlined,
-            size: 80,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _searchQuery.isNotEmpty 
-                ? '검색 결과가 없습니다'
-                : '등록된 상품이 없습니다',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _searchQuery.isNotEmpty
-                ? '다른 키워드로 검색해보세요'
-                : '첫 번째 상품을 등록해보세요',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
-          ),
-          if (_searchQuery.isEmpty) ...[
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => context.push('/product/create'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-              ),
-              child: const Text(
-                '상품 등록하기',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
-class _CategoryFilter extends StatelessWidget {
-  final String selectedCategory;
-  final ValueChanged<String> onCategoryChanged;
+class _CategoryFilter extends StatefulWidget {
+  const _CategoryFilter();
+
+  @override
+  State<_CategoryFilter> createState() => _CategoryFilterState();
+}
+
+class _CategoryFilterState extends State<_CategoryFilter> {
+  String _selectedCategory = '전체';
   
-  const _CategoryFilter({
-    required this.selectedCategory,
-    required this.onCategoryChanged,
-  });
-  
-  final List<Map<String, dynamic>> _categories = const [
+  final List<Map<String, dynamic>> _categories = [
     {'label': '전체', 'icon': Icons.apps},
     {'label': '의류', 'icon': Icons.checkroom},
     {'label': '전자기기', 'icon': Icons.phone_android},
     {'label': '생활용품', 'icon': Icons.home},
-    {'label': '도서/문구', 'icon': Icons.book},
-    {'label': '스포츠/레저', 'icon': Icons.sports_soccer},
-    {'label': '뷰티/미용', 'icon': Icons.face},
+    {'label': '도서', 'icon': Icons.book},
+    {'label': '스포츠', 'icon': Icons.sports_soccer},
+    {'label': '뷰티', 'icon': Icons.face},
     {'label': '기타', 'icon': Icons.more_horiz},
   ];
 
@@ -393,22 +314,25 @@ class _CategoryFilter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: _categories.length,
         itemBuilder: (context, index) {
           final category = _categories[index];
-          final isSelected = selectedCategory == category['label'];
+          final isSelected = _selectedCategory == category['label'];
           
           return Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
             child: _CategoryChip(
               label: category['label'],
               icon: category['icon'],
               isSelected: isSelected,
               onSelected: (selected) {
-                onCategoryChanged(category['label']);
+                setState(() {
+                  _selectedCategory = category['label'];
+                });
+                // TODO: 카테고리 필터링 구현
               },
             ),
           );
@@ -470,3 +394,4 @@ class _CategoryChip extends StatelessWidget {
     );
   }
 }
+

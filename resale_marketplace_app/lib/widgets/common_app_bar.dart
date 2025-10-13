@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
 
 class CommonAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -93,18 +91,10 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             );
           },
         ),
-        Consumer<AuthProvider>(
-          builder: (context, authProvider, child) {
-            // 로그인한 사용자만 추가 버튼 표시
-            if (!authProvider.isAuthenticated) {
-              return const SizedBox.shrink();
-            }
-            return IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: onAddPressed ?? () {
-                context.push('/product/create');
-              },
-            );
+        IconButton(
+          icon: const Icon(Icons.add),
+          onPressed: onAddPressed ?? () {
+            context.push('/product/create');
           },
         ),
         const SizedBox(width: 8),

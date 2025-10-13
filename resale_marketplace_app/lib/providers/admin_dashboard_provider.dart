@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/admin/monitoring_service.dart';
+import '../utils/app_logger.dart';
 
 class AdminDashboardProvider extends ChangeNotifier {
+  final _logger = AppLogger.scoped('AdminDashboard');
   final _supabase = Supabase.instance.client;
   final _monitoringService = MonitoringService();
   
@@ -100,7 +102,7 @@ class AdminDashboardProvider extends ChangeNotifier {
   // 실시간 업데이트 시작
   Future<void> startRealTimeUpdates() async {
     try {
-      print('🚀 관리자 대시보드 실시간 업데이트 시작');
+      _logger.w('🚀 관리자 대시보드 실시간 업데이트 시작');
       
       // 모니터링 서비스 시작
       await _monitoringService.startMonitoring();
@@ -118,13 +120,13 @@ class AdminDashboardProvider extends ChangeNotifier {
       );
       
     } catch (e) {
-      print('❌ 실시간 업데이트 시작 실패: $e');
+      _logger.w('❌ 실시간 업데이트 시작 실패: $e');
     }
   }
   
   // 실시간 업데이트 중지
   void stopRealTimeUpdates() {
-    print('🛑 관리자 대시보드 실시간 업데이트 중지');
+    _logger.w('🛑 관리자 대시보드 실시간 업데이트 중지');
     
     _updateTimer?.cancel();
     _systemEventSubscription?.cancel();
@@ -167,7 +169,7 @@ class AdminDashboardProvider extends ChangeNotifier {
         _loadNotifications(),
       ]);
     } catch (e) {
-      print('❌ 초기 데이터 로드 실패: $e');
+      _logger.w('❌ 초기 데이터 로드 실패: $e');
     } finally {
       _setLoading(false);
     }
@@ -182,7 +184,7 @@ class AdminDashboardProvider extends ChangeNotifier {
         _updateSystemStatus(),
       ]);
     } catch (e) {
-      print('❌ 대시보드 데이터 업데이트 실패: $e');
+      _logger.w('❌ 대시보드 데이터 업데이트 실패: $e');
     }
   }
   
@@ -200,7 +202,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       final activeTransactionsResponse = await _supabase
           .from('transactions')
           .select('id')
-          .in_('status', ['pending', 'processing'])
+          .inFilter('status', ['pending', 'processing'])
           .count();
       _activeTransactions = activeTransactionsResponse.count;
       
@@ -227,7 +229,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       await _calculateGrowthRates();
       
     } catch (e) {
-      print('❌ 기본 통계 로드 실패: $e');
+      _logger.w('❌ 기본 통계 로드 실패: $e');
     }
   }
   
@@ -263,7 +265,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _productGrowthRate = _generateRealisticGrowthRate();
       
     } catch (e) {
-      print('❌ 증감률 계산 실패: $e');
+      _logger.w('❌ 증감률 계산 실패: $e');
       // 시뮬레이션 데이터 사용
       _userGrowthRate = _generateRealisticGrowthRate();
       _transactionGrowthRate = _generateRealisticGrowthRate();
@@ -282,7 +284,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _productTrend = _generateTrendData(7, 10, 50);
       
     } catch (e) {
-      print('❌ 트렌드 데이터 로드 실패: $e');
+      _logger.w('❌ 트렌드 데이터 로드 실패: $e');
     }
   }
   
@@ -316,7 +318,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       }).toList();
       
     } catch (e) {
-      print('❌ 최근 거래 로드 실패: $e');
+      _logger.w('❌ 최근 거래 로드 실패: $e');
       // 시뮬레이션 데이터 사용
       _recentTransactions = _generateMockTransactions();
     }
@@ -329,7 +331,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _realTimeUserData = _generateMockUserActivities();
       
     } catch (e) {
-      print('❌ 실시간 사용자 활동 업데이트 실패: $e');
+      _logger.w('❌ 실시간 사용자 활동 업데이트 실패: $e');
     }
   }
   
@@ -347,7 +349,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _databaseStatus = {'status': 'healthy'}; // 시뮬레이션
       
     } catch (e) {
-      print('❌ 시스템 상태 업데이트 실패: $e');
+      _logger.w('❌ 시스템 상태 업데이트 실패: $e');
       _systemHealth = _generateMockSystemHealth();
       _serverStatus = {'status': 'healthy'};
       _databaseStatus = {'status': 'healthy'};
@@ -362,7 +364,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _categoryDistribution = _generateCategoryDistribution();
       
     } catch (e) {
-      print('❌ 차트 데이터 로드 실패: $e');
+      _logger.w('❌ 차트 데이터 로드 실패: $e');
     }
   }
   
@@ -372,7 +374,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _recentActivities = _generateMockActivities();
       
     } catch (e) {
-      print('❌ 최근 활동 로드 실패: $e');
+      _logger.w('❌ 최근 활동 로드 실패: $e');
     }
   }
   
@@ -383,7 +385,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _hasUnreadAlerts = _notifications.any((notif) => !(notif['is_read'] ?? false));
       
     } catch (e) {
-      print('❌ 알림 로드 실패: $e');
+      _logger.w('❌ 알림 로드 실패: $e');
     }
   }
   

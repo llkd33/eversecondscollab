@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>중고거래 마켓플레이스</title>
+    <meta name="description" content="대신팔기 중고거래 플랫폼 - 안전하고 편리한 중고거래">
+    
+    <!-- Open Graph for social sharing -->
+    <meta property="og:title" content="중고거래 마켓플레이스">
+    <meta property="og:description" content="대신팔기 중고거래 플랫폼 - 안전하고 편리한 중고거래">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://app.everseconds.com">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 1rem;
+        }
+        
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            width: 100%;
+        }
+        
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        
+        .app-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+        
+        .app-info h3 {
+            margin-bottom: 1rem;
+            color: #ffd700;
+            text-align: center;
+        }
+        
+        .feature {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.8rem;
+        }
+        
+        .feature-icon {
+            margin-right: 0.8rem;
+            font-size: 1.2rem;
+        }
+        
+        .download-section {
+            margin-top: 2rem;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            margin: 0.5rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            border: none;
+            cursor: pointer;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .download-btn.android {
+            background: #34A853;
+        }
+        
+        .download-btn.ios {
+            background: #007AFF;
+        }
+        
+        .download-btn.try-app {
+            background: #FF6B6B;
+        }
+        
+        .link-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 2rem;
+            font-size: 0.9rem;
+        }
+        
+        .footer {
+            margin-top: 2rem;
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+        
+        .url-display {
+            word-break: break-all;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.5rem;
+            border-radius: 5px;
+            margin-top: 0.5rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 1.5rem;
+                margin: 0.5rem;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+            
+            .subtitle {
+                font-size: 1rem;
+            }
+            
+            .download-btn {
+                display: block;
+                margin: 0.5rem 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🛍️</div>
+        <h1 id="page-title">중고거래 마켓플레이스</h1>
+        <p class="subtitle" id="page-subtitle">대신팔기 중고거래 플랫폼</p>
+        
+        <div class="app-info">
+            <h3>✨ 주요 기능</h3>
+            <div class="feature">
+                <span class="feature-icon">🔄</span>
+                <span>대신팔기 서비스</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">💬</span>
+                <span>안전한 실시간 채팅</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🔒</span>
+                <span>안전거래 시스템</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📱</span>
+                <span>편리한 모바일 앱</span>
+            </div>
+        </div>
+        
+        <div class="download-section">
+            <p style="margin-bottom: 1rem;">📲 이 링크를 앱에서 열어보세요!</p>
+            
+            <!-- 앱에서 열기 시도 버튼 -->
+            <button class="download-btn try-app" onclick="tryOpenInApp()">
+                🚀 앱에서 열기
+            </button>
+            
+            <!-- Android APK 다운로드 링크 -->
+            <a href="./app-release.apk" class="download-btn android" onclick="downloadAPK(event)">
+                🤖 Android APK 다운로드
+            </a>
+            
+            <!-- iOS 앱스토어 링크 -->
+            <button class="download-btn ios" onclick="alert('iOS 앱은 준비 중입니다!')">
+                🍎 App Store (준비중)
+            </button>
+        </div>
+        
+        <div class="link-info">
+            <p><strong>📍 현재 링크:</strong></p>
+            <div class="url-display" id="current-url"></div>
+            <p style="margin-top: 0.5rem; font-size: 0.8rem;">
+                이 링크를 앱에서 열면 해당 페이지로 바로 이동합니다.
+            </p>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 EverSeconds. All rights reserved.</p>
+        </div>
+    </div>
+
+    <script>
+        // 현재 URL 표시
+        document.getElementById('current-url').textContent = window.location.href;
+        
+        // 앱에서 열기 시도
+        function tryOpenInApp() {
+            const currentUrl = window.location.href;
+            
+            // Android 앱 딥링크 시도
+            const appScheme = currentUrl.replace('https://app.everseconds.com', 'resale://');
+            
+            console.log('앱 딥링크 시도:', appScheme);
+            
+            // 모바일에서 앱 실행 시도
+            if (/Android/i.test(navigator.userAgent)) {
+                // Android - intent URL 사용
+                const intentUrl = `intent://${appScheme.replace('resale://', '')}#Intent;scheme=resale;package=com.everseconds.resale_marketplace_app;end`;
+                window.location.href = intentUrl;
+            } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                // iOS - 커스텀 스키마 시도
+                window.location.href = appScheme;
+            } else {
+                // 데스크톱 - 새 탭으로 시도
+                window.open(appScheme, '_blank');
+            }
+            
+            // 3초 후 앱이 열리지 않으면 다운로드 안내
+            setTimeout(() => {
+                if (confirm('앱이 설치되어 있지 않은 것 같습니다. APK를 다운로드하시겠습니까?')) {
+                    downloadAPK();
+                }
+            }, 3000);
+        }
+        
+        // APK 다운로드 함수
+        function downloadAPK(event) {
+            if (event) event.preventDefault();
+            
+            // 실제 APK 파일 경로 (서버에 업로드 후 사용)
+            const apkUrl = './app-release.apk';
+            
+            // APK 다운로드 시작
+            const link = document.createElement('a');
+            link.href = apkUrl;
+            link.download = 'resale-marketplace.apk';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // 다운로드 안내 메시지
+            setTimeout(() => {
+                alert('APK 다운로드가 시작되었습니다.\\n\\n다운로드 완료 후:\\n1. APK 파일을 실행하세요\\n2. "알 수 없는 앱 설치" 허용\\n3. 앱 설치 완료 후 다시 이 링크를 클릭해보세요!');
+            }, 1000);
+        }
+        
+        // URL 파라미터 기반 동적 콘텐츠
+        function updateContentBasedOnPath() {
+            const path = window.location.pathname;
+            const titleElement = document.getElementById('page-title');
+            const subtitleElement = document.getElementById('page-subtitle');
+            
+            if (path.includes('/shop/')) {
+                titleElement.textContent = '🏪 상점 페이지';
+                subtitleElement.textContent = '이 상점을 앱에서 확인해보세요!';
+            } else if (path.includes('/product/')) {
+                titleElement.textContent = '📦 상품 상세';
+                subtitleElement.textContent = '이 상품을 앱에서 확인해보세요!';
+            } else if (path.includes('/user/')) {
+                titleElement.textContent = '👤 사용자 프로필';
+                subtitleElement.textContent = '이 사용자의 프로필을 앱에서 확인해보세요!';
+            } else if (path.includes('/transaction/')) {
+                titleElement.textContent = '💰 거래 정보';
+                subtitleElement.textContent = '이 거래 정보를 앱에서 확인해보세요!';
+            }
+        }
+        
+        // 페이지 로드 시 실행
+        window.onload = function() {
+            updateContentBasedOnPath();
+            
+            // 모바일에서 자동으로 앱 실행 시도 (사용자 액션 없이는 제한적)
+            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                console.log('모바일 디바이스 감지됨');
+                // 자동 실행은 사용자 제스처가 필요하므로 버튼으로 대체
+            }
+        };
+    </script>
+</body>
+</html>

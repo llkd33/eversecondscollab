@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import '../models/product_model.dart';
 import '../services/product_service.dart';
+import '../utils/app_logger.dart';
 
 /// 상품 목록 상태 관리 Provider
 /// 불필요한 setState 호출을 줄이고 효율적인 상태 관리를 제공
 class ProductProvider extends ChangeNotifier {
+  final _logger = AppLogger.scoped('ProductProvider');
   final ProductService _productService = ProductService();
   
   // 상품 목록
@@ -107,9 +109,7 @@ class ProductProvider extends ChangeNotifier {
       
     } catch (e) {
       _errorMessage = '상품을 불러오는데 실패했습니다';
-      if (kDebugMode) {
-        print('Error loading products: $e');
-      }
+      _logger.e('Error loading products: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

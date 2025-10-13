@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product_model.dart';
 
 enum SortOption { latest, priceAsc, priceDesc, popular, distance }
@@ -129,6 +130,14 @@ class SearchService {
           .map((json) => ProductModel.fromJson(json))
           .toList();
 
+      // 검색어가 있는 경우 검색 기록에 저장 (백그라운드에서 실행)
+      if (query != null && query.trim().isNotEmpty) {
+        // 검색 기록 저장은 비동기로 처리하여 검색 결과 반환을 지연시키지 않음
+        saveSearchTerm(query.trim()).catchError((e) {
+          print('검색어 저장 중 오류: $e');
+        });
+      }
+
       return SearchResult(
         products: products,
         totalCount: products.length,
@@ -136,30 +145,86 @@ class SearchService {
         filter: searchFilter,
       );
     } catch (error) {
-      throw Exception('Failed to search products: $error');
+      throw Exception('상품 검색에 실패했습니다. 다시 시도해주세요.');
     }
   }
 
   /// 인기 검색어 조회
   Future<List<String>> getPopularSearchTerms({int limit = 10}) async {
-    // 기본 인기 검색어 반환
-    return ['아이폰', '맥북', '에어팟', '갤럭시', '아이패드'];
+    try {
+      // 실제로는 서버에서 검색 통계를 기반으로 인기 검색어를 가져와야 함
+      // 현재는 기본 인기 검색어와 최근 검색어를 조합하여 반환
+      final basePopularTerms = ['아이폰', '맥북', '에어팟', '갤럭시', '아이패드', '닌텐도', '스위치', '애플워치'];
+      final recentTerms = await getRecentSearchTerms(limit: 5);
+      
+      final combinedTerms = <String>{};
+      combinedTerms.addAll(recentTerms);
+      combinedTerms.addAll(basePopularTerms);
+      
+      return combinedTerms.take(limit).toList();
+    } catch (e) {
+      print('인기 검색어 조회 실패: $e');
+      return ['아이폰', '맥북', '에어팟', '갤럭시', '아이패드'];
+    }
   }
 
   /// 최근 검색어 조회
   Future<List<String>> getRecentSearchTerms({int limit = 10}) async {
-    // 기본 빈 리스트 반환
-    return [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final searchHistory = prefs.getStringList('search_history') ?? [];
+      return searchHistory.take(limit).toList();
+    } catch (e) {
+      print('최근 검색어 조회 실패: $e');
+      return [];
+    }
   }
 
   /// 검색어 저장
   Future<void> saveSearchTerm(String searchTerm) async {
-    // 검색어 저장 로직 (현재는 빈 구현)
+    if (searchTerm.trim().isEmpty) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final searchHistory = prefs.getStringList('search_history') ?? [];
+      
+      // 기존에 있던 검색어 제거 (중복 방지)
+      searchHistory.remove(searchTerm.trim());
+      
+      // 맨 앞에 추가
+      searchHistory.insert(0, searchTerm.trim());
+      
+      // 최대 50개까지만 저장
+      if (searchHistory.length > 50) {
+        searchHistory.removeRange(50, searchHistory.length);
+      }
+      
+      await prefs.setStringList('search_history', searchHistory);
+    } catch (e) {
+      print('검색어 저장 실패: $e');
+    }
   }
 
   /// 검색 기록 삭제
   Future<void> clearSearchHistory() async {
-    // 검색 기록 삭제 로직 (현재는 빈 구현)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('search_history');
+    } catch (e) {
+      print('검색 기록 삭제 실패: $e');
+    }
+  }
+
+  /// 특정 검색어 삭제
+  Future<void> removeSearchTerm(String searchTerm) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final searchHistory = prefs.getStringList('search_history') ?? [];
+      searchHistory.remove(searchTerm);
+      await prefs.setStringList('search_history', searchHistory);
+    } catch (e) {
+      print('검색어 삭제 실패: $e');
+    }
   }
 
   /// 카테고리 목록 조회
@@ -207,7 +272,60 @@ class SearchService {
           .map((json) => ProductModel.fromJson(json))
           .toList();
     } catch (error) {
-      throw Exception('Failed to get recommended products: $error');
+      throw Exception('추천 상품을 불러오는데 실패했습니다. 다시 시도해주세요.');
+    }
+  }
+
+  /// 자동완성 검색어 조회
+  Future<List<String>> getAutoCompleteTerms(String query, {int limit = 5}) async {
+    if (query.trim().isEmpty) return [];
+    
+    try {
+      // 실제로는 서버에서 자동완성 데이터를 가져와야 함
+      // 현재는 기본적인 매칭 로직으로 구현
+      final popularTerms = await getPopularSearchTerms(limit: 20);
+      final recentTerms = await getRecentSearchTerms(limit: 20);
+      
+      final allTerms = <String>{};
+      allTerms.addAll(popularTerms);
+      allTerms.addAll(recentTerms);
+      
+      // 쿼리와 매칭되는 항목 필터링
+      final matchedTerms = allTerms
+          .where((term) => term.toLowerCase().contains(query.toLowerCase()))
+          .take(limit)
+          .toList();
+      
+      return matchedTerms;
+    } catch (e) {
+      print('자동완성 검색어 조회 실패: $e');
+      return [];
+    }
+  }
+
+  /// 검색 제안어 조회 (제품명 기반)
+  Future<List<String>> getSearchSuggestions(String query, {int limit = 5}) async {
+    if (query.trim().isEmpty) return [];
+    
+    try {
+      // 제품 테이블에서 제목을 기반으로 검색 제안어 생성
+      final response = await _supabase
+          .from('products')
+          .select('title')
+          .ilike('title', '%${query.trim()}%')
+          .eq('status', '판매중')
+          .limit(limit * 2); // 중복 제거를 위해 더 많이 가져옴
+      
+      final titles = (response as List)
+          .map((item) => item['title'] as String)
+          .toSet() // 중복 제거
+          .take(limit)
+          .toList();
+      
+      return titles;
+    } catch (e) {
+      print('검색 제안어 조회 실패: $e');
+      return [];
     }
   }
 

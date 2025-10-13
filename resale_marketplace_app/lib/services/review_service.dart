@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/review_model.dart';
 import '../utils/uuid.dart';
+import 'image_compression_service.dart';
 
 class ReviewService {
   final SupabaseClient _client = SupabaseConfig.client;
@@ -269,11 +270,28 @@ class ReviewService {
 
     try {
       for (int i = 0; i < imageFiles.length; i++) {
-        final file = imageFiles[i];
-        final fileName =
-            'review_${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final originalFile = imageFiles[i];
+        print('📷 리뷰 이미지 업로드 시작 ($i/${imageFiles.length})');
+        
+        // 리뷰 이미지 압축
+        final compressedFile = await ImageCompressionService.compressImage(
+          originalFile,
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 85,
+          maxFileSize: (1.5 * 1024 * 1024).round(), // 1.5MB
+        );
+        
+        if (compressedFile == null) {
+          print('⚠️ 리뷰 이미지 압축 실패, 건너뛰기...');
+          continue;
+        }
+        
+        final fileName = 'review_${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final bytes = await compressedFile.readAsBytes();
+        
+        print('📦 압축된 리뷰 이미지 업로드: ${(bytes.length / 1024).toStringAsFixed(1)}KB');
 
-        final bytes = await file.readAsBytes();
         await _client.storage
             .from('review-images')
             .uploadBinary(fileName, bytes);
@@ -283,6 +301,15 @@ class ReviewService {
             .getPublicUrl(fileName);
 
         uploadedUrls.add(url);
+        
+        // 임시 압축 파일 삭제
+        if (compressedFile.path != originalFile.path) {
+          try {
+            await compressedFile.delete();
+          } catch (e) {
+            print('임시 파일 삭제 실패: $e');
+          }
+        }
       }
 
       return uploadedUrls;

@@ -45,14 +45,14 @@ class SafeTransactionModel {
 
   // 데이터 검증 로직
   void _validate() {
-    if (id.isEmpty) throw ArgumentError('Safe transaction ID cannot be empty');
-    if (transactionId.isEmpty) throw ArgumentError('Transaction ID cannot be empty');
-    if (depositAmount <= 0) throw ArgumentError('Deposit amount must be positive');
+    if (id.isEmpty) throw ArgumentError('안전거래 ID는 비어있을 수 없습니다');
+    if (transactionId.isEmpty) throw ArgumentError('거래 ID는 비어있을 수 없습니다');
+    if (depositAmount <= 0) throw ArgumentError('예치금액은 0보다 커야 합니다');
     if (!SettlementStatus.isValid(settlementStatus)) {
-      throw ArgumentError('Invalid settlement status');
+      throw ArgumentError('유효하지 않은 정산 상태입니다');
     }
     if (adminNotes != null && adminNotes!.length > 1000) {
-      throw ArgumentError('Admin notes too long (max 1000 characters)');
+      throw ArgumentError('관리자 메모가 너무 깁니다 (최대 1000자)');
     }
   }
 

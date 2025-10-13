@@ -43,41 +43,20 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-# Local environment variables
-.env
 
-# Flutter specific
+# Android Gradle cache
+.gradle/
+*.apk
+
+# Flutter cache and build files
 .flutter
-.flutter-plugins
-.flutter-plugins-dependencies
-.dart_tool/
-.packages
-.metadata
-.flutter-plugins-dependencies
-
-# Android/Gradle specific
-.gradle/
-build/
-*.iml
-*.hprof
-.cxx/
-local.properties
-
-# iOS specific
-ios/Podfile.lock
-ios/Pods/
-ios/Runner.xcworkspace/
-ios/Flutter/Flutter.framework
-ios/Flutter/Flutter.podspec
-
-# Build artifacts
-**/build/
-**/android/app/debug
-**/android/app/profile
-**/android/app/release
-
-# Large cache and build files
-.gradle/
+.config/
 flutter_local/
-**/.dart_tool/
-**/.config/
+*.pid
+
+# iOS Pods
+ios/Podfile.lock
+
+# Firebase config (should use environment variables in production)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

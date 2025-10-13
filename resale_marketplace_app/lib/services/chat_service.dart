@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
+import '../models/chat_message_model.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
+import '../models/user_model.dart';
 import '../utils/uuid.dart';
+import 'image_compression_service.dart';
+import 'push_notification_service.dart';
 
 class ChatService {
   ChatService({SupabaseClient? client})
@@ -25,19 +29,34 @@ class ChatService {
     Map<String, dynamic>? extraData, // 추가 메타데이터
   }) async {
     try {
+      print('🔄 채팅방 생성 시작');
+      print('참여자: $participants');
+      print('상품ID: $productId');
+      print('대신팔기: $isResaleChat');
+
       // Validate participants (must all be UUIDs)
       final validParticipants = participants.where(UuidUtils.isValid).toList();
+      print('유효한 참여자: $validParticipants');
+
       if (validParticipants.length != participants.length) {
+        final invalidIds = participants
+            .where((id) => !UuidUtils.isValid(id))
+            .toList();
+        print('❌ 잘못된 UUID: $invalidIds');
         throw Exception('잘못된 사용자 ID가 포함되어 있습니다. 다시 로그인 후 시도해주세요.');
       }
 
       // 이미 존재하는 채팅방 확인
+      print('🔍 기존 채팅방 확인 중...');
       final existingChat = await _findExistingChat(
         validParticipants,
         productId,
         resellerId,
       );
-      if (existingChat != null) return existingChat;
+      if (existingChat != null) {
+        print('✅ 기존 채팅방 발견: ${existingChat.id}');
+        return existingChat;
+      }
 
       final payload = <String, dynamic>{
         'participants': validParticipants,
@@ -53,11 +72,16 @@ class ChatService {
         payload['original_seller_id'] = originalSellerId;
       }
 
+      print('💾 채팅방 데이터 삽입 중...');
+      print('Payload: $payload');
+
       final response = await _client
           .from('chats')
           .insert(payload)
           .select()
           .single();
+
+      print('✅ 채팅방 생성 성공: $response');
 
       final chat = ChatModel.fromJson(response);
 
@@ -65,8 +89,9 @@ class ChatService {
       if (isResaleChat && resellerId != null) {
         // 대신판매자와 원 판매자 정보 가져오기
         final resellerInfo = extraData?['reseller_name'] ?? '대신판매자';
-        final originalSellerInfo = extraData?['original_seller_name'] ?? '원 판매자';
-        
+        final originalSellerInfo =
+            extraData?['original_seller_name'] ?? '원 판매자';
+
         await sendSystemMessage(
           chatId: chat.id,
           content:
@@ -80,8 +105,40 @@ class ChatService {
 
       return chat;
     } catch (e) {
-      print('Error creating chat: $e');
-      return null;
+      print('채팅방 생성 실패 - 상세 오류: $e');
+
+      // 더 구체적인 오류 정보 제공
+      if (e is PostgrestException) {
+        print('Supabase 오류 - 코드: ${e.code}, 메시지: ${e.message}');
+        print('힌트: ${e.hint}');
+        print('세부사항: ${e.details}');
+
+        // 권한 오류 체크
+        if (e.code == '42501' ||
+            e.message?.contains('permission denied') == true) {
+          throw Exception('로그인이 필요합니다. 다시 로그인 후 시도해주세요.');
+        }
+
+        // RLS 정책 위반 체크
+        if (e.code == 'PGRST116' ||
+            e.message?.contains('row-level security') == true) {
+          throw Exception('접근 권한이 없습니다. 로그인 상태를 확인해주세요.');
+        }
+
+        // 네트워크 연결 오류
+        if (e.message?.contains('network') == true ||
+            e.message?.contains('timeout') == true) {
+          throw Exception('네트워크 연결을 확인하고 다시 시도해주세요.');
+        }
+      }
+
+      // 일반적인 네트워크 오류
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('HttpException')) {
+        throw Exception('인터넷 연결을 확인하고 다시 시도해주세요.');
+      }
+
+      rethrow; // 기타 오류는 상위로 전파
     }
   }
 
@@ -171,14 +228,11 @@ class ChatService {
         return await _getMyChatsBasic(userId);
       }
       // 데이터베이스 함수를 사용하여 최적화된 쿼리 실행
-      final response = await _client.rpc(
-        'get_user_chats',
-        params: {'user_id': userId},
-      );
+      final response = await _client.rpc('get_user_chats');
 
       return (response as List).map((item) {
         return ChatModel.fromJson({
-          'id': item['chat_id'],
+          'id': item['id'],
           'participants': item['participants'],
           'product_id': item['product_id'],
           'reseller_id': item['reseller_id'],
@@ -186,12 +240,14 @@ class ChatService {
           'original_seller_id': item['original_seller_id'],
           'created_at': item['created_at'],
           'updated_at': item['updated_at'],
-          'product_title': item['product_title'],
-          'product_image': item['product_image'],
-          'product_price': item['product_price'],
-          'last_message': item['last_message'],
-          'last_message_time': item['last_message_time'],
-          'unread_count': item['unread_count'],
+          'product_title': item['product']?['title'],
+          'product_image': item['product']?['image_urls']?.isNotEmpty == true
+              ? item['product']['image_urls'][0]
+              : null,
+          'product_price': item['product']?['price'],
+          'last_message': item['last_message']?['content'],
+          'last_message_time': item['last_message']?['created_at'],
+          'unread_count': 0, // Will be calculated separately if needed
         });
       }).toList();
     } catch (e) {
@@ -340,10 +396,70 @@ class ChatService {
           .update({'updated_at': DateTime.now().toIso8601String()})
           .eq('id', chatId);
 
-      return MessageModel.fromJson(response);
+      final message = MessageModel.fromJson(response);
+
+      // 시스템 메시지가 아닌 경우에만 푸시 알림 전송
+      if (messageType != 'system') {
+        await _sendChatNotification(chatId, senderId, content, message);
+      }
+
+      return message;
     } catch (e) {
       print('Error sending message: $e');
       return null;
+    }
+  }
+
+  // 채팅 알림 전송
+  Future<void> _sendChatNotification(
+    String chatId,
+    String senderId,
+    String content,
+    MessageModel message,
+  ) async {
+    try {
+      // 채팅방 정보 가져오기
+      final chatResponse = await _client
+          .from('chats')
+          .select('participants')
+          .eq('id', chatId)
+          .single();
+
+      final participants = List<String>.from(
+        chatResponse['participants'] ?? [],
+      );
+
+      // 발신자 제외한 수신자들
+      final recipients = participants.where((id) => id != senderId).toList();
+
+      if (recipients.isEmpty) return;
+
+      // 발신자 정보 가져오기
+      final senderResponse = await _client
+          .from('users')
+          .select('name')
+          .eq('id', senderId)
+          .single();
+
+      final senderName = senderResponse['name'] as String? ?? '사용자';
+
+      // 각 수신자에게 알림 전송
+      final pushService = PushNotificationService();
+      for (final recipientId in recipients) {
+        await pushService.sendChatNotification(
+          recipientId: recipientId,
+          senderName: senderName,
+          message: content.length > 30
+              ? '${content.substring(0, 30)}...'
+              : content,
+          chatRoomId: chatId,
+        );
+      }
+
+      print('✅ 채팅 알림 전송 완료: ${recipients.length}명');
+    } catch (e) {
+      print('❌ 채팅 알림 전송 실패: $e');
+      // 알림 전송 실패해도 메시지 전송은 성공으로 처리
     }
   }
 
@@ -368,29 +484,23 @@ class ChatService {
       // 데이터베이스 함수를 사용하여 최적화된 쿼리 실행
       final response = await _client.rpc(
         'get_chat_messages',
-        params: {
-          'chat_id_param': chatId,
-          'limit_param': limit,
-          'offset_param': offset,
-        },
+        params: {'chat_id_param': chatId},
       );
 
-      return (response as List)
-          .map((item) {
-            return MessageModel.fromJson({
-              'id': item['message_id'],
-              'chat_id': item['chat_id'],
-              'sender_id': item['sender_id'],
-              'content': item['content'],
-              'message_type': item['message_type'],
-              'created_at': item['created_at'],
-              'sender_name': item['sender_name'],
-              'sender_image': item['sender_profile_image'],
-            });
-          })
-          .toList()
-          .reversed
-          .toList(); // 시간순으로 정렬
+      return (response as List).map((item) {
+        return MessageModel.fromJson({
+          'id': item['id'],
+          'chat_id': item['chat_id'],
+          'sender_id': item['sender_id'],
+          'content': item['content'],
+          'message_type': item['message_type'],
+          'created_at': item['created_at'],
+          'updated_at': item['updated_at'],
+          'is_read': item['is_read'],
+          'sender_name': item['sender_profile']?['full_name'],
+          'sender_image': item['sender_profile']?['avatar_url'],
+        });
+      }).toList(); // Already ordered by created_at ASC in the function
     } catch (e) {
       if (e is PostgrestException && e.code == 'PGRST202') {
         _isGetChatMessagesRpcAvailable = false;
@@ -446,6 +556,30 @@ class ChatService {
     }
   }
 
+  Future<List<ChatMessageModel>> getChatRoomMessages(
+    String chatRoomId, {
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await _client
+          .from('chat_messages')
+          .select('*, sender:sender_id(*)')
+          .eq('chat_room_id', chatRoomId)
+          .order('created_at', ascending: true)
+          .range(offset, offset + limit - 1);
+
+      return (response as List)
+          .map((item) => ChatMessageModel.fromJson(
+                item as Map<String, dynamic>,
+              ))
+          .toList();
+    } catch (e) {
+      print('Error getting chat room messages: $e');
+      return [];
+    }
+  }
+
   // 실시간 메시지 구독
   StreamSubscription<List<Map<String, dynamic>>> subscribeToChat(
     String chatId,
@@ -461,28 +595,44 @@ class ChatService {
       return sub;
     }
 
-    // 새 구독 생성 - Supabase Realtime을 사용한 실시간 구독
-    final subscription = _client
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('chat_id', chatId)
-        .order('created_at')
-        .listen((List<Map<String, dynamic>> data) {
-          if (data.isNotEmpty) {
-            // 새로운 메시지들을 처리
-            for (final messageData in data) {
-              try {
-                final message = MessageModel.fromJson(messageData);
-                onNewMessage(message);
-              } catch (e) {
-                print('Error parsing message: $e');
+    try {
+      // 새 구독 생성 - Supabase Realtime을 사용한 실시간 구독
+      final subscription = _client
+          .from('messages')
+          .stream(primaryKey: ['id'])
+          .eq('chat_id', chatId)
+          .order('created_at')
+          .listen(
+            (List<Map<String, dynamic>> data) {
+              if (data.isNotEmpty) {
+                // 새로운 메시지들을 처리
+                for (final messageData in data) {
+                  try {
+                    final message = MessageModel.fromJson(messageData);
+                    onNewMessage(message);
+                  } catch (e) {
+                    print('Error parsing message: $e');
+                  }
+                }
               }
-            }
-          }
-        });
+            },
+            onError: (error) {
+              print('Realtime subscription error: $error');
+              // 재연결 시도
+              Future.delayed(const Duration(seconds: 2), () {
+                subscribeToChat(chatId, onNewMessage);
+              });
+            },
+          );
 
-    _subscriptions[chatId] = subscription;
-    return subscription;
+      _subscriptions[chatId] = subscription;
+      return subscription;
+    } catch (e) {
+      print('Error creating realtime subscription: $e');
+      final sub = Stream<List<Map<String, dynamic>>>.empty().listen((_) {});
+      _subscriptions[chatId] = sub;
+      return sub;
+    }
   }
 
   // 채팅방 구독 해제
@@ -503,13 +653,20 @@ class ChatService {
   Future<MessageModel?> sendSystemMessage({
     required String chatId,
     required String content,
+    String? senderId,
   }) async {
-    // 시스템 사용자 ID (특별한 ID 사용)
-    const systemUserId = '00000000-0000-0000-0000-000000000000';
+    final effectiveSenderId = senderId ?? _client.auth.currentUser?.id;
+
+    if (effectiveSenderId == null) {
+      print(
+        'sendSystemMessage skipped: no authenticated user available for system message.',
+      );
+      return null;
+    }
 
     return sendMessage(
       chatId: chatId,
-      senderId: systemUserId,
+      senderId: effectiveSenderId,
       content: content,
       messageType: 'system',
     );
@@ -563,17 +720,60 @@ class ChatService {
     String userId,
   ) async {
     try {
-      final bytes = await imageFile.readAsBytes();
+      print('📷 채팅 이미지 업로드 시작');
+
+      // 채팅 이미지 압축
+      final compressedFile = await ImageCompressionService.compressImage(
+        imageFile,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 80,
+        maxFileSize: (1.5 * 1024 * 1024).round(), // 1.5MB
+      );
+
+      if (compressedFile == null) {
+        print('⚠️ 채팅 이미지 압축 실패');
+        return null;
+      }
+
+      final bytes = await compressedFile.readAsBytes();
       final fileName =
           'chat_${chatId}_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      print('📦 압축된 채팅 이미지 업로드: ${(bytes.length / 1024).toStringAsFixed(1)}KB');
 
       await _client.storage.from('chat-images').uploadBinary(fileName, bytes);
 
       final url = _client.storage.from('chat-images').getPublicUrl(fileName);
 
+      // 임시 압축 파일 삭제
+      if (compressedFile.path != imageFile.path) {
+        try {
+          await compressedFile.delete();
+        } catch (e) {
+          print('임시 파일 삭제 실패: $e');
+        }
+      }
+
       return url;
     } catch (e) {
       print('Error uploading chat image: $e');
+      return null;
+    }
+  }
+
+  Future<UserModel?> getUserById(String userId) async {
+    try {
+      final response = await _client
+          .from('users')
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return UserModel.fromJson(response);
+    } catch (e) {
+      print('Error getting user by id: $e');
       return null;
     }
   }

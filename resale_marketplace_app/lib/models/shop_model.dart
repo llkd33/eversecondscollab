@@ -97,7 +97,8 @@ class ShopModel {
   }
 
   // 샵 URL 생성
-  String get fullShareUrl => shareUrl != null ? 'https://everseconds.com/shop/$shareUrl' : '';
+  String get fullShareUrl =>
+      shareUrl != null ? 'https://www.everseconds.com/shop/$shareUrl' : '';
   
   // 상품 개수 계산
   int get totalProductCount => (productIds?.length ?? 0) + (resaleProductIds?.length ?? 0);

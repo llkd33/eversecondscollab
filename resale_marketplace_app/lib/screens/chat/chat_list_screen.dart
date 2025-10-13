@@ -1,121 +1,46 @@
 import 'package:flutter/material.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/safe_network_image.dart';
-import '../../services/chat_service.dart';
-import '../../services/auth_service.dart';
-import '../../models/chat_model.dart';
-import '../../models/user_model.dart';
-import 'package:go_router/go_router.dart';
+import 'chat_room_screen.dart';
 
-class ChatListScreen extends StatefulWidget {
-  final UserModel? initialUser;
-  final List<ChatModel>? initialChats;
-  final Future<UserModel?> Function()? userLoaderOverride;
-  final Future<List<ChatModel>> Function(String userId)? chatLoaderOverride;
-  final bool deferInitialLoad;
-
-  const ChatListScreen({
-    super.key,
-    this.initialUser,
-    this.initialChats,
-    this.userLoaderOverride,
-    this.chatLoaderOverride,
-    this.deferInitialLoad = false,
-  });
-
-  @override
-  State<ChatListScreen> createState() => _ChatListScreenState();
-}
-
-class _ChatListScreenState extends State<ChatListScreen> {
-  ChatService? _chatService;
-  AuthService? _authService;
-  List<ChatModel> _chats = [];
-  bool _isLoading = true;
-  UserModel? _currentUser;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentUser = widget.initialUser;
-
-    if (widget.initialChats != null) {
-      _chats = List<ChatModel>.from(widget.initialChats!);
-      _isLoading = false;
-    }
-
-    if (!widget.deferInitialLoad && widget.initialChats == null) {
-      _loadChats();
-    } else if (widget.deferInitialLoad) {
-      _isLoading = false;
-    }
-  }
-
-  Future<void> _loadChats() async {
-    try {
-      setState(() => _isLoading = true);
-
-      final user =
-          _currentUser ??
-          (widget.userLoaderOverride != null
-              ? await widget.userLoaderOverride!()
-              : await (_authService ??= AuthService()).getCurrentUser());
-
-      _currentUser = user;
-
-      if (user != null) {
-        final chats = widget.chatLoaderOverride != null
-            ? await widget.chatLoaderOverride!(user.id)
-            : await (_chatService ??= ChatService()).getMyChats(user.id);
-
-        if (!mounted) return;
-        setState(() {
-          _chats = chats;
-          _isLoading = false;
-        });
-      } else {
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-      }
-    } catch (e) {
-      print('Error loading chats: $e');
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-    }
-  }
+class ChatListScreen extends StatelessWidget {
+  const ChatListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const ChatAppBar(),
       backgroundColor: AppTheme.backgroundColor,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildChatList(),
+      body: _buildChatList(),
     );
   }
 
   Widget _buildChatList() {
-    if (_chats.isEmpty) {
+    // TODO: 실제 채팅방 데이터로 교체
+    final mockChatRooms = List.generate(8, (index) => _MockChatRoom(
+      id: 'chat_$index',
+      userName: '사용자${index + 1}',
+      userAvatar: null,
+      productTitle: _getProductTitle(index),
+      productPrice: _getProductPrice(index),
+      productImage: null,
+      lastMessage: _getLastMessage(index),
+      lastMessageTime: _getLastMessageTime(index),
+      unreadCount: index % 3 == 0 ? (index % 5) + 1 : 0,
+      isOnline: index % 4 == 0,
+    ));
+
+    if (mockChatRooms.isEmpty) {
       return _buildEmptyState();
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadChats,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        itemCount: _chats.length,
-        separatorBuilder: (context, index) =>
-            const SizedBox(height: AppSpacing.sm),
-        itemBuilder: (context, index) {
-          final chat = _chats[index];
-          return _ChatListItem(
-            chat: chat,
-            currentUserId: _currentUser?.id ?? '',
-          );
-        },
-      ),
+    return ListView.separated(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      itemCount: mockChatRooms.length,
+      separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),
+      itemBuilder: (context, index) {
+        return _ChatListItem(chatRoom: mockChatRooms[index]);
+      },
     );
   }
 
@@ -124,37 +49,119 @@ class _ChatListScreenState extends State<ChatListScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
+          Icon(
+            Icons.chat_bubble_outline,
+            size: 64,
+            color: Colors.grey[400],
+          ),
           const SizedBox(height: AppSpacing.md),
           Text(
             '아직 채팅방이 없습니다',
-            style: AppStyles.headingSmall.copyWith(color: Colors.grey[600]),
+            style: AppStyles.headingSmall.copyWith(
+              color: Colors.grey[600],
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '상품에 관심을 표시하면\n채팅방이 생성됩니다',
-            style: AppStyles.bodyMedium.copyWith(color: Colors.grey[500]),
+            style: AppStyles.bodyMedium.copyWith(
+              color: Colors.grey[500],
+            ),
             textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
+
+  String _getProductTitle(int index) {
+    final products = [
+      '아이폰 14 Pro 256GB',
+      '삼성 갤럭시 S23',
+      '맥북 에어 M2',
+      '에어팟 프로 2세대',
+      '아이패드 프로 11인치',
+      '닌텐도 스위치',
+      '소니 WH-1000XM4',
+      '애플워치 시리즈 8',
+    ];
+    return products[index % products.length];
+  }
+
+  int _getProductPrice(int index) {
+    final prices = [1200000, 800000, 1500000, 250000, 900000, 350000, 300000, 450000];
+    return prices[index % prices.length];
+  }
+
+  String _getLastMessage(int index) {
+    final messages = [
+      '네, 언제 거래 가능하신가요?',
+      '상품 상태는 어떤가요?',
+      '직거래 가능한가요?',
+      '안전거래로 진행하고 싶어요',
+      '사진 더 보여주실 수 있나요?',
+      '가격 조금 더 깎아주실 수 있나요?',
+      '내일 거래 가능할까요?',
+      '운송장 번호 알려주세요',
+    ];
+    return messages[index % messages.length];
+  }
+
+  String _getLastMessageTime(int index) {
+    final times = [
+      '방금 전',
+      '5분 전',
+      '1시간 전',
+      '오후 2:30',
+      '오전 11:15',
+      '어제',
+      '2일 전',
+      '1주일 전',
+    ];
+    return times[index % times.length];
+  }
+}
+
+class _MockChatRoom {
+  final String id;
+  final String userName;
+  final String? userAvatar;
+  final String productTitle;
+  final int productPrice;
+  final String? productImage;
+  final String lastMessage;
+  final String lastMessageTime;
+  final int unreadCount;
+  final bool isOnline;
+
+  _MockChatRoom({
+    required this.id,
+    required this.userName,
+    this.userAvatar,
+    required this.productTitle,
+    required this.productPrice,
+    this.productImage,
+    required this.lastMessage,
+    required this.lastMessageTime,
+    required this.unreadCount,
+    required this.isOnline,
+  });
 }
 
 class _ChatListItem extends StatelessWidget {
-  final ChatModel chat;
-  final String currentUserId;
-
-  const _ChatListItem({required this.chat, required this.currentUserId});
+  final _MockChatRoom chatRoom;
+  
+  const _ChatListItem({required this.chatRoom});
 
   @override
   Widget build(BuildContext context) {
-    final hasUnreadMessages = (chat.unreadCount ?? 0) > 0;
-
+    final hasUnreadMessages = chatRoom.unreadCount > 0;
+    
     return Card(
       elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _navigateToChatRoom(context),
@@ -164,7 +171,9 @@ class _ChatListItem extends StatelessWidget {
             children: [
               _buildUserAvatar(),
               const SizedBox(width: AppSpacing.md),
-              Expanded(child: _buildChatInfo(hasUnreadMessages)),
+              Expanded(
+                child: _buildChatInfo(hasUnreadMessages),
+              ),
               const SizedBox(width: AppSpacing.sm),
               _buildProductPreview(),
             ],
@@ -175,26 +184,17 @@ class _ChatListItem extends StatelessWidget {
   }
 
   Widget _buildUserAvatar() {
-    // 대화 상대방 찾기
-    final otherParticipant = chat.participants.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => '',
-    );
-
     return Stack(
       children: [
         CircleAvatar(
           radius: 26,
           backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-          backgroundImage: chat.otherUserProfileImage != null
-              ? NetworkImage(chat.otherUserProfileImage!)
+          backgroundImage: chatRoom.userAvatar != null 
+              ? NetworkImage(chatRoom.userAvatar!) 
               : null,
-          child: chat.otherUserProfileImage == null
+          child: chatRoom.userAvatar == null
               ? Text(
-                  chat.otherUserName?.substring(0, 1).toUpperCase() ??
-                  (otherParticipant.isNotEmpty
-                      ? otherParticipant.substring(0, 1).toUpperCase()
-                      : '?'),
+                  chatRoom.userName.substring(0, 1),
                   style: const TextStyle(
                     color: AppTheme.primaryColor,
                     fontWeight: FontWeight.bold,
@@ -203,21 +203,17 @@ class _ChatListItem extends StatelessWidget {
                 )
               : null,
         ),
-        if (chat.isResaleChat)
+        if (chatRoom.isOnline)
           Positioned(
-            bottom: 0,
-            right: 0,
+            right: 2,
+            bottom: 2,
             child: Container(
-              padding: const EdgeInsets.all(2),
+              width: 14,
+              height: 14,
               decoration: BoxDecoration(
-                color: Colors.blue,
+                color: AppTheme.successColor,
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Icon(
-                Icons.store,
-                size: 12,
-                color: Colors.white,
               ),
             ),
           ),
@@ -226,90 +222,33 @@ class _ChatListItem extends StatelessWidget {
   }
 
   Widget _buildChatInfo(bool hasUnreadMessages) {
-    // 상대방 이름 가져오기 (실제 이름 또는 ID 사용)
-    final otherParticipant = chat.participants.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => 'Unknown',
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      chat.otherUserName ?? otherParticipant,
-                      style: AppStyles.bodyMedium.copyWith(
-                        fontWeight: hasUnreadMessages
-                            ? FontWeight.bold
-                            : FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (chat.isResaleChat) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade100,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '대신팔기',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+              child: Text(
+                chatRoom.userName,
+                style: AppStyles.bodyMedium.copyWith(
+                  fontWeight: hasUnreadMessages ? FontWeight.bold : FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             Text(
-              _formatTime(chat.lastMessageTime ?? chat.updatedAt),
+              chatRoom.lastMessageTime,
               style: AppStyles.bodySmall.copyWith(
-                color: hasUnreadMessages
-                    ? AppTheme.primaryColor
-                    : Colors.grey[600],
-                fontWeight: hasUnreadMessages
-                    ? FontWeight.w600
-                    : FontWeight.normal,
+                color: hasUnreadMessages ? AppTheme.primaryColor : Colors.grey[600],
+                fontWeight: hasUnreadMessages ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        // 대신팔기 정보 표시
-        if (chat.isResaleChat && chat.resellerName != null) ...[
-          Row(
-            children: [
-              Icon(Icons.info_outline, size: 12, color: Colors.blue[600]),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  '${chat.resellerName}님이 대신 판매중',
-                  style: AppStyles.bodySmall.copyWith(
-                    color: Colors.blue[600],
-                    fontSize: 11,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-        ],
         Text(
-          chat.lastMessage ?? '대화를 시작하세요',
+          chatRoom.lastMessage,
           style: AppStyles.bodySmall.copyWith(
             fontWeight: hasUnreadMessages ? FontWeight.w600 : FontWeight.normal,
             color: hasUnreadMessages ? Colors.black87 : Colors.grey[600],
@@ -317,19 +256,25 @@ class _ChatListItem extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        if ((chat.unreadCount ?? 0) > 0) ...[
+        if (chatRoom.unreadCount > 0) ...[
           const SizedBox(height: AppSpacing.xs),
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.red,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                constraints: const BoxConstraints(
+                  minWidth: 20,
+                  minHeight: 20,
+                ),
                 child: Text(
-                  chat.unreadCount! > 99 ? '99+' : chat.unreadCount.toString(),
+                  chatRoom.unreadCount > 99 ? '99+' : chatRoom.unreadCount.toString(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
@@ -345,28 +290,7 @@ class _ChatListItem extends StatelessWidget {
     );
   }
 
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final difference = now.difference(time);
-
-    if (difference.inMinutes < 1) {
-      return '방금 전';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}분 전';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}시간 전';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}일 전';
-    } else {
-      return '${time.month}/${time.day}';
-    }
-  }
-
   Widget _buildProductPreview() {
-    if (chat.productId == null) {
-      return const SizedBox.shrink();
-    }
-
     return Container(
       width: 80,
       padding: const EdgeInsets.all(AppSpacing.sm),
@@ -386,23 +310,38 @@ class _ChatListItem extends StatelessWidget {
               color: Colors.grey[300],
               borderRadius: BorderRadius.circular(6),
             ),
-            child: chat.productImage != null
-                ? SafeNetworkImage(
-                    imageUrl: chat.productImage!,
-                    fit: BoxFit.cover,
+            child: chatRoom.productImage != null
+                ? ClipRRect(
                     borderRadius: BorderRadius.circular(6),
+                    child: Image.network(
+                      chatRoom.productImage!,
+                      fit: BoxFit.cover,
+                    ),
                   )
-                : const Icon(Icons.image, color: Colors.grey, size: 20),
+                : const Icon(
+                    Icons.image,
+                    color: Colors.grey,
+                    size: 20,
+                  ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            chat.productTitle ?? '상품',
+            chatRoom.productTitle,
             style: AppStyles.bodySmall.copyWith(
               fontWeight: FontWeight.w600,
               fontSize: 10,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${_formatPrice(chatRoom.productPrice)}원',
+            style: AppStyles.bodySmall.copyWith(
+              color: AppTheme.secondaryColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -426,18 +365,16 @@ class _ChatListItem extends StatelessWidget {
   }
 
   void _navigateToChatRoom(BuildContext context) {
-    final otherParticipant = chat.participants.firstWhere(
-      (id) => id != currentUserId,
-      orElse: () => 'Unknown',
-    );
-
-    context.push(
-      '/chat_room',
-      extra: {
-        'chatRoomId': chat.id,
-        'userName': chat.otherUserName ?? otherParticipant,
-        'productTitle': chat.productTitle ?? '',
-      },
+    // TODO: 실제 채팅방 화면으로 네비게이션 구현
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatRoomScreen(
+          chatRoomId: chatRoom.id,
+          userName: chatRoom.userName,
+          productTitle: chatRoom.productTitle,
+        ),
+      ),
     );
   }
 }

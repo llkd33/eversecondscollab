@@ -646,7 +646,7 @@ class _WelcomeDialog extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '에버세컨즈의 회원이 되신 것을\n진심으로 환영합니다.',
+              '리세일 마켓의 회원이 되신 것을\n진심으로 환영합니다.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,

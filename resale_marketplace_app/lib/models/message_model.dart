@@ -27,13 +27,13 @@ class MessageModel {
 
   // 데이터 검증 로직
   void _validate() {
-    if (id.isEmpty) throw ArgumentError('Message ID cannot be empty');
-    if (chatId.isEmpty) throw ArgumentError('Chat ID cannot be empty');
-    if (senderId.isEmpty) throw ArgumentError('Sender ID cannot be empty');
-    if (content.isEmpty) throw ArgumentError('Message content cannot be empty');
-    if (content.length > 1000) throw ArgumentError('Message content too long (max 1000 characters)');
+    if (id.isEmpty) throw ArgumentError('메시지 ID는 비어있을 수 없습니다');
+    if (chatId.isEmpty) throw ArgumentError('채팅방 ID는 비어있을 수 없습니다');
+    if (senderId.isEmpty) throw ArgumentError('송신자 ID는 비어있을 수 없습니다');
+    if (content.isEmpty) throw ArgumentError('메시지 내용은 비어있을 수 없습니다');
+    if (content.length > 1000) throw ArgumentError('메시지가 너무 깁니다 (최대 1000자)');
     if (!MessageType.isValid(messageType ?? MessageType.text)) {
-      throw ArgumentError('Invalid message type');
+      throw ArgumentError('유효하지 않은 메시지 유형입니다');
     }
   }
 
@@ -96,6 +96,7 @@ class MessageModel {
   bool get isSystemMessage => messageType == 'system';
   bool get isImageMessage => messageType == 'image';
   bool get isTextMessage => messageType == 'text';
+  bool get isTransactionMessage => messageType == MessageType.transaction;
   
   // 메시지 발송자 확인
   bool isSentBy(String userId) => senderId == userId;
@@ -118,8 +119,9 @@ class MessageType {
   static const String text = 'text';
   static const String image = 'image';
   static const String system = 'system';
+  static const String transaction = 'transaction';
 
-  static const List<String> all = [text, image, system];
+  static const List<String> all = [text, image, system, transaction];
   static bool isValid(String type) => all.contains(type);
 }
 

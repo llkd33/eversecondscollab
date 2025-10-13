@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/user_model.dart';
 import '../utils/api_cache.dart';
 import '../config/kakao_config.dart';
-import '../config/env_flags.dart';
 import 'shop_service.dart';
 
 /// 인증 서비스 - 로그인, 로그아웃, 회원가입 및 인증 상태 관리
@@ -18,60 +17,6 @@ class AuthService {
 
   final SupabaseClient _supabase;
   final _cache = ApiCache();
-
-  /// Phone Auth 설정 상태 확인
-  Future<Map<String, dynamic>> checkPhoneAuthStatus() async {
-    // In web or local test mode, avoid hitting the OTP endpoint to prevent 422 noise.
-    if (kIsWeb || enableLocalTestMode) {
-      return {
-        'enabled': false,
-        'provider': 'none',
-        'message': 'Skipped phone auth check in web/test mode',
-      };
-    }
-    try {
-      // Supabase Auth 설정 상태 확인 시도
-      final testPhone = '+821012345678'; // 테스트용 번호
-
-      // 실제 SMS를 보내지 않고 설정만 확인하는 방법을 시도
-      await _supabase.auth.signInWithOtp(
-        phone: testPhone,
-        shouldCreateUser: false,
-      );
-
-      return {
-        'enabled': true,
-        'provider': 'vonage',
-        'message': 'Phone Auth 설정이 정상입니다',
-      };
-    } catch (e) {
-      final errorMsg = e.toString().toLowerCase();
-
-      if (errorMsg.contains('phone_provider_disabled') ||
-          errorMsg.contains('phone provider disabled')) {
-        return {
-          'enabled': false,
-          'provider': 'none',
-          'message': 'Phone 인증이 비활성화되어 있습니다',
-          'error': e.toString(),
-        };
-      } else if (errorMsg.contains('signup not allowed')) {
-        return {
-          'enabled': true,
-          'provider': 'unknown',
-          'message': 'Phone Auth는 활성화되어 있지만 회원가입이 제한되어 있습니다',
-          'error': e.toString(),
-        };
-      } else {
-        return {
-          'enabled': true,
-          'provider': 'vonage',
-          'message': 'Phone Auth 설정을 확인할 수 없지만 활성화되어 있는 것으로 보입니다',
-          'error': e.toString(),
-        };
-      }
-    }
-  }
 
   /// 현재 로그인된 사용자 정보
   User? get currentUser => _supabase.auth.currentUser;
@@ -94,140 +39,6 @@ class AuthService {
     } catch (e) {
       print('Error fetching user role: $e');
       return null;
-    }
-  }
-
-  /// 전화번호로 OTP 전송 (Vonage API 사용)
-  Future<void> sendOTP(String phone) async {
-    final success = await sendVerificationCode(phone, allowCreateUser: true);
-    if (!success) {
-      throw Exception('인증번호 전송에 실패했습니다.');
-    }
-  }
-
-  /// OTP 전송 (신규 가입 허용 여부를 제어)
-  Future<bool> sendVerificationCode(
-    String phone, {
-    bool allowCreateUser = true,
-  }) async {
-    try {
-      final normalizedPhone = _normalizeLocalPhone(phone);
-      final e164Phone = _formatToE164KR(normalizedPhone);
-
-      if (allowCreateUser) {
-        try {
-          final tempPassword = '${DateTime.now().millisecondsSinceEpoch}Temp!';
-          await _supabase.auth.signUp(phone: e164Phone, password: tempPassword);
-          print('✅ 신규 전화번호 가입 완료: $e164Phone');
-        } on AuthApiException catch (e) {
-          final message = (e.message ?? e.toString()).toLowerCase();
-          if (!(message.contains('already registered') ||
-              (e.code != null && e.code!.contains('already')))) {
-            rethrow;
-          }
-          print('ℹ️ 이미 가입된 전화번호로 확인되어 가입 단계는 건너뜁니다.');
-        }
-      }
-
-      await _supabase.auth.signInWithOtp(
-        phone: e164Phone,
-        channel: OtpChannel.sms,
-        // signUp을 별도로 수행했으므로 여기서는 false로 두어도 됨
-        shouldCreateUser: false,
-      );
-
-      print('✅ OTP 전송 성공: $e164Phone');
-      return true;
-    } on AuthApiException catch (e) {
-      if (e.code == 'otp_disabled') {
-        throw Exception(
-          'OTP 인증이 비활성화되어 있습니다. Supabase Auth 설정에서 전화번호 가입을 허용해주세요. (${e.message})',
-        );
-      }
-      throw Exception('인증번호 전송 실패: ${e.message}');
-    } catch (e) {
-      throw Exception('인증번호 전송 실패: $e');
-    }
-  }
-
-  /// OTP 인증 및 로그인/회원가입
-  Future<AuthResponse> verifyOTP({
-    required String phone,
-    required String otp,
-    String? name,
-  }) async {
-    try {
-      print('🔐 OTP 검증 시작: $phone / $otp');
-
-      // 한국 번호 형식으로 변환
-      final formattedPhone = _formatToE164KR(phone);
-
-      print('🌏 변환된 전화번호: $formattedPhone');
-      print('🔑 인증번호: $otp');
-
-      final response = await _supabase.auth.verifyOTP(
-        type: OtpType.sms,
-        phone: formattedPhone,
-        token: otp,
-      );
-
-      print('✅ OTP 검증 응답 받음: ${response.user?.id}');
-
-      if (response.user != null) {
-        // 신규 사용자인 경우 users 테이블에 추가
-        final existingUser = await _supabase
-            .from('users')
-            .select()
-            .eq('id', response.user!.id)
-            .maybeSingle();
-
-        if (existingUser == null) {
-          // 신규 회원가입 - RLS 우회를 위해 다양한 방법 시도
-          print('🔧 신규 사용자 생성 시도...');
-
-          try {
-            // 방법 1: 일반 삽입 시도
-            await _supabase.from('users').insert({
-              'id': response.user!.id,
-              'email': null, // 전화번호 기반 가입
-              'phone': phone,
-              'name': name ?? '사용자${phone.substring(phone.length - 4)}',
-              'is_verified': true, // SMS 인증 완료
-              'role': '일반', // UserModel에서 기대하는 역할
-              'created_at': DateTime.now().toIso8601String(),
-              'updated_at': DateTime.now().toIso8601String(),
-            });
-            print('✅ 신규 사용자 생성 완료: ${response.user!.id}');
-          } catch (rlsError) {
-            print('⚠️ RLS 정책으로 인한 삽입 실패, 대안 방법 시도: $rlsError');
-
-            try {
-              // 방법 2: RPC 함수를 통한 삽입 시도 (만약 있다면)
-              await _supabase.rpc(
-                'create_user_profile',
-                params: {
-                  'user_id': response.user!.id,
-                  'user_phone': phone,
-                  'user_name':
-                      name ?? '사용자${phone.substring(phone.length - 4)}',
-                  'user_role': '일반',
-                },
-              );
-              print('✅ RPC를 통한 사용자 생성 완료: ${response.user!.id}');
-            } catch (rpcError) {
-              print('⚠️ RPC도 실패, 기본 프로필로 계속 진행: $rpcError');
-              // RLS 오류를 무시하고 계속 진행
-              // Auth 사용자는 생성되었으므로 기본 프로필 정보만으로도 진행 가능
-            }
-          }
-        }
-
-        _cache.clear();
-      }
-
-      return response;
-    } catch (e) {
-      throw Exception('인증 실패: $e');
     }
   }
 

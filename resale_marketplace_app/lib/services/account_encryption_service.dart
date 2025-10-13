@@ -7,6 +7,7 @@ import 'package:postgrest/postgrest.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
+import '../config/encryption_config.dart';
 
 /// 🔒 계좌정보 암호화/복호화 서비스
 /// AES-256-GCM 암호화를 사용하여 계좌번호를 안전하게 저장
@@ -15,12 +16,12 @@ class AccountEncryptionService {
   static const String _metadataMaskedKey = 'account_number_masked';
   static const String _metadataUpdatedAtKey = 'account_number_updated_at';
 
-  // 🔑 암호화 키 (실제 환경에서는 환경변수나 안전한 키 관리 서비스 사용)
-  static const String _baseKey = 'EverSecondsMarketplace2024!@#\$';
+  // 🔑 암호화 키 - 환경변수에서 안전하게 로드
+  static String get _baseKey => EncryptionConfig.encryptionKey;
 
   // 암호화 알고리즘 설정
-  static final _key = Key.fromBase64(_generateBase64Key());
-  static final _encrypter = Encrypter(AES(_key, mode: AESMode.gcm));
+  static Key get _key => Key.fromBase64(_generateBase64Key());
+  static Encrypter get _encrypter => Encrypter(AES(_key, mode: AESMode.gcm));
 
   /// Base64 키 생성 (32바이트)
   static String _generateBase64Key() {
@@ -54,6 +55,8 @@ class AccountEncryptionService {
 
       // IV:암호화데이터:태그 형식으로 반환
       return '${iv.base64}:${encrypted.base64}';
+    } on ArgumentError {
+      rethrow;
     } catch (e) {
       throw Exception('계좌번호 암호화 실패: $e');
     }

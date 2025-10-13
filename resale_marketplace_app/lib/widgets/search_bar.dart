@@ -6,10 +6,8 @@ class CustomSearchBar extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final VoidCallback? onFilterPressed;
-  final VoidCallback? onTap;
   final TextEditingController? controller;
   final bool showFilter;
-  final bool readOnly;
 
   const CustomSearchBar({
     super.key,
@@ -17,10 +15,8 @@ class CustomSearchBar extends StatefulWidget {
     this.onChanged,
     this.onSubmitted,
     this.onFilterPressed,
-    this.onTap,
     this.controller,
     this.showFilter = true,
-    this.readOnly = false,
   });
 
   @override
@@ -63,17 +59,12 @@ class _CustomSearchBarState extends State<CustomSearchBar> {
               ),
               child: TextField(
                 controller: _controller,
-                readOnly: widget.readOnly,
                 onChanged: widget.onChanged,
                 onSubmitted: widget.onSubmitted,
                 onTap: () {
-                  if (widget.onTap != null) {
-                    widget.onTap!();
-                  } else {
-                    setState(() {
-                      _isSearching = true;
-                    });
-                  }
+                  setState(() {
+                    _isSearching = true;
+                  });
                 },
                 onEditingComplete: () {
                   setState(() {

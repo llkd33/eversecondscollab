@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../services/transaction_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/user_service.dart';
+import '../../services/account_encryption_service.dart';
 import '../../models/transaction_model.dart';
+import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/safe_network_image.dart';
 
@@ -20,10 +24,15 @@ class TransactionDetailScreen extends StatefulWidget {
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   final TransactionService _transactionService = TransactionService();
   final AuthService _authService = AuthService();
+  final UserService _userService = UserService();
 
   TransactionModel? _transaction;
   bool _isLoading = true;
   String? _currentUserId;
+  
+  // 💳 계좌정보 관련
+  Map<String, dynamic>? _accountInfo;
+  bool _isLoadingAccount = false;
 
   // 사용자 역할
   bool get isBuyer => _transaction?.buyerId == _currentUserId;
@@ -52,12 +61,68 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           _transaction = transaction;
           _isLoading = false;
         });
+        
+        // 일반거래이고 거래 참여자인 경우 계좌정보 로드
+        if (transaction != null && 
+            transaction.transactionType == TransactionType.normal &&
+            (isBuyer || isSeller || isReseller)) {
+          _loadAccountInfo();
+        }
       }
     } catch (e) {
       print('Error loading transaction: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  // 💳 계좌정보 로드 (거래 참여자만)
+  Future<void> _loadAccountInfo() async {
+    if (_transaction == null) return;
+    
+    setState(() {
+      _isLoadingAccount = true;
+    });
+    
+    try {
+      // 상품 정보에서 계좌정보 가져오기
+      // TODO: ProductService에 getProductAccountInfo 메서드 구현 필요
+      // 임시로 판매자 기본 계좌정보 사용
+      final sellerInfo = await _userService.getUserById(_transaction!.sellerId);
+      
+      if (sellerInfo?.hasAccountInfo == true) {
+        // 계좌번호 복호화 (거래 참여자에게만 공개)
+        try {
+          final decryptedAccountNumber = AccountEncryptionService.decryptAccountNumber(
+            sellerInfo!.accountNumber ?? '', // 실제로는 DB에서 암호화된 계좌번호를 가져와야 함
+          );
+          
+          _accountInfo = {
+            'bank_name': sellerInfo.bankName,
+            'account_number': AccountEncryptionService.formatAccountNumber(decryptedAccountNumber),
+            'account_holder': sellerInfo.accountHolder,
+            'masked_account_number': AccountEncryptionService.maskAccountNumber(decryptedAccountNumber),
+          };
+        } catch (e) {
+          print('계좌번호 복호화 실패: $e');
+          // 복호화 실패시 마스킹된 정보만 표시
+          _accountInfo = {
+            'bank_name': sellerInfo!.bankName,
+            'account_holder': sellerInfo.accountHolder,
+            'account_number': '계좌번호 조회 실패',
+            'masked_account_number': '****',
+          };
+        }
+      }
+    } catch (e) {
+      print('계좌정보 로드 실패: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingAccount = false;
         });
       }
     }
@@ -335,6 +400,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         title: const Text('거래 상세'),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: _shareTransaction,
+            tooltip: '거래 공유',
+          ),
           if (_transaction!.chatId != null)
             IconButton(
               icon: const Icon(Icons.chat_bubble_outline),
@@ -351,6 +421,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             _buildProductInfo(theme),
             // 거래 정보
             _buildTransactionInfo(theme),
+            // 💳 계좌정보 (일반거래시)
+            if (_transaction!.transactionType == TransactionType.normal)
+              _buildAccountInfoWidget(theme),
             // 거래 당사자 정보
             _buildParticipantInfo(theme),
             // 안전거래 프로세스 (안전거래인 경우)
@@ -918,5 +991,222 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
 
   String _formatPrice(int price) {
     return '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
+  }
+  
+  // 💳 계좌정보 위젯
+  Widget _buildAccountInfoWidget(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_balance,
+                color: Colors.blue[600],
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '입금 계좌정보',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[700],
+                ),
+              ),
+              const Spacer(),
+              if (_isLoadingAccount)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue[600],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          if (_accountInfo != null) ...[
+            // 계좌정보 표시
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[300]!),
+              ),
+              child: Column(
+                children: [
+                  _buildAccountInfoRow('은행명', _accountInfo!['bank_name'] ?? '-', theme),
+                  const SizedBox(height: 8),
+                  _buildAccountInfoRow('계좌번호', _accountInfo!['account_number'] ?? '-', theme),
+                  const SizedBox(height: 8),
+                  _buildAccountInfoRow('예금주', _accountInfo!['account_holder'] ?? '-', theme),
+                  const SizedBox(height: 12),
+                  
+                  // 계좌번호 복사 버튼
+                  if (_accountInfo!['account_number'] != null && _accountInfo!['account_number'] != '계좌번호 조회 실패')
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Clipboard.setData(
+                            ClipboardData(text: _accountInfo!['account_number'].replaceAll('-', '')),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('계좌번호가 클립보드에 복사되었습니다'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('계좌번호 복사'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // 안내 메시지
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.blue[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isBuyer 
+                          ? '위 계좌로 상품 금액을 입금하신 후 결제확인 버튼을 눌러주세요.\n입금자명은 구매자 성함과 일치해야 합니다.'
+                          : '구매자가 위 계좌로 입금하면 배송을 시작해주세요.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.blue[700],
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            // 계좌정보 없음
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange[300]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '판매자의 계좌정보를 불러올 수 없습니다.\n거래에 문제가 있으면 고객센터로 문의해주세요.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange[700],
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  // 계좌정보 행 위젯
+  Widget _buildAccountInfoRow(String label, String value, ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 거래 공유
+  Future<void> _shareTransaction() async {
+    if (_transaction == null) return;
+
+    final webLink = 'https://app.everseconds.com/transaction/${_transaction!.id}';
+    final appLink = 'resale://transaction/${_transaction!.id}';
+    
+    final message = '거래 정보를 확인해보세요!\n\n'
+        '상품: ${_transaction!.productTitle}\n'
+        '가격: ${_transaction!.formattedPrice}\n'
+        '상태: ${_transaction!.status}\n\n'
+        '웹에서 보기: $webLink\n'
+        '앱에서 보기: $appLink';
+
+    try {
+      await Share.share(
+        message,
+        subject: '${_transaction!.productTitle} 거래 정보',
+      );
+    } catch (_) {
+      // 공유 실패시 웹 링크를 클립보드에 복사
+      await Clipboard.setData(ClipboardData(text: webLink));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('공유를 지원하지 않아 웹 링크를 복사했습니다'),
+          action: SnackBarAction(
+            label: '앱 링크 복사',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: appLink));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('앱 링크가 복사되었습니다')),
+              );
+            },
+          ),
+        ),
+      );
+    }
   }
 }

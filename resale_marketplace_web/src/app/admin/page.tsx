@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase/config';
 
 export default function AdminLoginPage() {
   const [credentials, setCredentials] = useState({
@@ -14,21 +13,16 @@ export default function AdminLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: credentials.email,
-        password: credentials.password,
-      });
-      if (error) {
-        alert(error.message || '로그인에 실패했습니다.');
-      } else {
+    
+    // Mock login - In production, this would authenticate with Supabase
+    setTimeout(() => {
+      if (credentials.email === 'admin@resale.com' && credentials.password === 'admin123') {
         window.location.href = '/admin/dashboard';
+      } else {
+        alert('잘못된 로그인 정보입니다.');
       }
-    } catch (err) {
-      alert('로그인 중 오류가 발생했습니다.');
-    } finally {
       setIsLoading(false);
-    }
+    }, 1000);
   };
 
   return (
@@ -91,7 +85,9 @@ export default function AdminLoginPage() {
           </div>
           
           <div className="text-center">
-            <p className="text-sm text-gray-500">관리자 계정으로 로그인하세요.</p>
+            <p className="text-sm text-gray-500">
+              테스트 계정: admin@resale.com / admin123
+            </p>
           </div>
         </form>
       </div>

@@ -176,15 +176,15 @@ class RealtimeChatService {
   }) async {
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) throw Exception('User not authenticated');
+      if (user == null) throw Exception('로그인이 필요합니다. 다시 로그인해주세요.');
 
       final messageData = {
         'chat_room_id': roomId,
         'sender_id': user.id,
         'content': content,
         'message_type': messageType,
-        'image_urls': imageUrls,
-        'metadata': metadata,
+        'image_urls': imageUrls ?? <String>[],
+        'metadata': metadata ?? <String, dynamic>{},
         'created_at': DateTime.now().toIso8601String(),
         'is_read': false,
       };

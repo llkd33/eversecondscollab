@@ -28,24 +28,5 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>resale.marketplace.app</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>resale.marketplace.app</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>kakaologin</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>kakaod7hGLkmnlxhgv11Ww1dlae11fQX7wxW5</string>
-			</array>
-		</dict>
-	</array>
 </dict>
 </plist>

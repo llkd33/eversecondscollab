@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import 'loading_widget.dart';
 
 enum ButtonType { primary, secondary, outline, text, danger }
 enum ButtonSize { small, medium, large }
@@ -73,17 +74,11 @@ class AppButton extends StatelessWidget {
 
   Widget _buildButtonContent() {
     if (isLoading) {
-      return SizedBox(
-        height: _getIconSize(),
-        width: _getIconSize(),
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(
-            type == ButtonType.outline || type == ButtonType.text
-                ? AppTheme.primaryColor
-                : Colors.white,
-          ),
-        ),
+      return LoadingWidget.small(
+        color: type == ButtonType.outline || type == ButtonType.text
+            ? AppTheme.primaryColor
+            : Colors.white,
+        showMessage: false,
       );
     }
 

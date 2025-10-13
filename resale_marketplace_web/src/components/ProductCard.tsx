@@ -3,7 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Product, ProductStatus } from '@/types';
+import { Product } from '@/types';
 
 interface ProductCardProps {
   product: Product;
@@ -27,7 +27,7 @@ export default function ProductCard({ product, isKioskMode = false }: ProductCar
       <div className={`bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer ${cardSize} flex flex-col`}>
         {/* Image Container */}
         <div className={`relative ${imageSize} bg-gray-100`}>
-          {product.images[0] && !product.images[0].startsWith('/api/placeholder') ? (
+          {product.images[0] ? (
             <Image
               src={product.images[0]}
               alt={product.title}
@@ -36,17 +36,25 @@ export default function ProductCard({ product, isKioskMode = false }: ProductCar
               sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
             />
           ) : (
-            <Image
-              src="/file.svg"
-              alt="placeholder"
-              fill
-              className="object-contain p-6"
-              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            />
+            <div className="flex items-center justify-center h-full">
+              <svg
+                className="w-12 h-12 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
           )}
           
           {/* Status Badge */}
-          {product.status === ProductStatus.SOLD && (
+          {product.status === 'sold' && (
             <div className="absolute top-2 left-2 bg-gray-900 bg-opacity-75 text-white px-3 py-1 rounded-lg text-sm font-semibold">
               판매완료
             </div>

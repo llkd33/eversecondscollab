@@ -34,7 +34,7 @@ class NotificationService {
     } catch (error, stackTrace) {
       ErrorHandler().logError(
         AppError.fromException(
-          Exception('Failed to initialize notification service: $error'),
+          Exception('알림 서비스 초기화에 실패했습니다: $error'),
           stackTrace: stackTrace,
         ),
       );
@@ -295,7 +295,7 @@ class NotificationService {
     } catch (error) {
       ErrorHandler().logError(
         AppError.fromException(
-          Exception('Failed to send notification: $error'),
+          Exception('알림 전송에 실패했습니다: $error'),
         ),
       );
     }
@@ -403,9 +403,3 @@ class NotificationService {
   bool get isInitialized => _isInitialized;
 }
 
-/// 백그라운드 메시지 핸들러 (최상위 함수여야 함)
-@pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  developer.log('Handling a background message: ${message.messageId}');
-  // 백그라운드에서 필요한 처리 수행
-}

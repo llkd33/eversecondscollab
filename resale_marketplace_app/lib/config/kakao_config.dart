@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'supabase_config.dart';
+import '../utils/app_logger.dart';
 
 class KakaoConfig {
   // 카카오 앱 키 (환경변수에서 가져오기, 없으면 기본값 사용)
@@ -137,17 +138,18 @@ class KakaoConfig {
 
   // 디버그 정보 출력
   static void printDebugInfo() {
-    print('=== Kakao Config Debug Info ===');
-    print('Is Configured: $isConfigured');
-    print(
+    final logger = AppLogger.scoped('KakaoConfig');
+    logger.i('=== Kakao Config Debug Info ===');
+    logger.i('Is Configured: $isConfigured');
+    logger.i(
       'Current Native App Key: ${currentNativeAppKey.isNotEmpty ? "${currentNativeAppKey.substring(0, 4)}****" : "Not Set"}',
     );
     final jsKeySet =
         javaScriptKey.isNotEmpty &&
         javaScriptKey != 'YOUR_KAKAO_JAVASCRIPT_KEY';
-    print('JavaScript Key Set: $jsKeySet');
-    print('Is Production: false'); // Web에서는 항상 false로 설정
-    print('==============================');
+    logger.i('JavaScript Key Set: $jsKeySet');
+    logger.i('Is Production: false'); // Web에서는 항상 false로 설정
+    logger.i('==============================');
   }
 
   static String? sanitizeRedirectPath(String? redirectPath) {

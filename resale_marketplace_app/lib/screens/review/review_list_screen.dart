@@ -4,6 +4,7 @@ import '../../services/user_service.dart';
 import '../../models/review_model.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/common/loading_widget.dart';
 
 class ReviewListScreen extends StatefulWidget {
   final String userId;
@@ -127,7 +128,7 @@ class _ReviewListScreenState extends State<ReviewListScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingWidget.center(message: '리뷰를 불러오는 중...')
           : TabBarView(
               controller: _tabController,
               children: [

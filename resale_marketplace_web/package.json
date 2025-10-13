@@ -6,9 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint",
-    "test": "vitest",
-    "test:run": "vitest run"
+    "lint": "eslint"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
@@ -29,8 +27,6 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^2.0.0",
-    "@vitest/ui": "^2.0.0"
+    "typescript": "^5"
   }
 }

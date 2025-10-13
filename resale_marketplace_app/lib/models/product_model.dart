@@ -6,6 +6,7 @@ class ProductModel {
   final List<String> images;
   final String category; // 의류, 전자기기, 생활용품 등
   final String sellerId;
+  final String? shopId; // 상품이 속한 샵 ID
   final bool resaleEnabled;
   final int resaleFee; // 수수료 금액
   final double? resaleFeePercentage; // 수수료 퍼센티지
@@ -16,6 +17,12 @@ class ProductModel {
   // 추가 정보 (조인해서 가져올 수 있는 정보)
   final String? sellerName;
   final String? sellerProfileImage;
+  
+  // 💳 거래용 계좌정보 (상품별 설정 가능)
+  final String? transactionBankName;
+  final String? transactionAccountNumber; 
+  final String? transactionAccountHolder;
+  final bool useDefaultAccount; // 사용자 기본 계좌 사용 여부
 
   ProductModel({
     required this.id,
@@ -25,6 +32,7 @@ class ProductModel {
     required this.images,
     required this.category,
     required this.sellerId,
+    this.shopId,
     this.resaleEnabled = false,
     this.resaleFee = 0,
     this.resaleFeePercentage,
@@ -33,26 +41,31 @@ class ProductModel {
     required this.updatedAt,
     this.sellerName,
     this.sellerProfileImage,
+    // 거래용 계좌정보
+    this.transactionBankName,
+    this.transactionAccountNumber,
+    this.transactionAccountHolder,
+    this.useDefaultAccount = true,
   }) {
     _validate();
   }
 
   // 데이터 검증 로직
   void _validate() {
-    if (id.isEmpty) throw ArgumentError('Product ID cannot be empty');
-    if (title.isEmpty) throw ArgumentError('Product title cannot be empty');
-    if (title.length > 100) throw ArgumentError('Product title too long (max 100 characters)');
-    if (price <= 0) throw ArgumentError('Product price must be positive');
-    if (price > 100000000) throw ArgumentError('Product price too high (max 100,000,000)');
-    if (sellerId.isEmpty) throw ArgumentError('Seller ID cannot be empty');
-    if (!ProductCategory.isValid(category)) throw ArgumentError('Invalid product category');
-    if (!ProductStatus.isValid(status)) throw ArgumentError('Invalid product status');
-    if (resaleFee < 0) throw ArgumentError('Resale fee cannot be negative');
+    if (id.isEmpty) throw ArgumentError('상품 ID는 비어있을 수 없습니다');
+    if (title.isEmpty) throw ArgumentError('상품명은 비어있을 수 없습니다');
+    if (title.length > 100) throw ArgumentError('상품명이 너무 깁니다 (최대 100자)');
+    if (price <= 0) throw ArgumentError('상품 가격은 0보다 커야 합니다');
+    if (price > 100000000) throw ArgumentError('상품 가격이 너무 높습니다 (최대 1억원)');
+    if (sellerId.isEmpty) throw ArgumentError('판매자 ID는 비어있을 수 없습니다');
+    if (!ProductCategory.isValid(category)) throw ArgumentError('유효하지 않은 상품 카테고리입니다');
+    if (!ProductStatus.isValid(status)) throw ArgumentError('유효하지 않은 상품 상태입니다');
+    if (resaleFee < 0) throw ArgumentError('대신판매 수수료는 음수일 수 없습니다');
     if (resaleFeePercentage != null && (resaleFeePercentage! < 0 || resaleFeePercentage! > 100)) {
-      throw ArgumentError('Resale fee percentage must be between 0 and 100');
+      throw ArgumentError('대신판매 수수료 비율은 0%에서 100% 사이여야 합니다');
     }
     if (description != null && description!.length > 1000) {
-      throw ArgumentError('Product description too long (max 1000 characters)');
+      throw ArgumentError('상품 설명이 너무 깁니다 (최대 1000자)');
     }
   }
 
@@ -71,6 +84,7 @@ class ProductModel {
           : [],
       category: ProductCategory.normalize(json['category'] as String?),
       sellerId: json['seller_id'],
+      shopId: json['shop_id'],
       resaleEnabled: json['resale_enabled'] ?? false,
       resaleFee: json['resale_fee'] ?? 0,
       resaleFeePercentage: json['resale_fee_percentage']?.toDouble(),
@@ -79,6 +93,11 @@ class ProductModel {
       updatedAt: DateTime.parse(json['updated_at']),
       sellerName: userInfo?['name'] ?? json['seller_name'],
       sellerProfileImage: userInfo?['profile_image'] ?? json['seller_profile_image'],
+      // 거래용 계좌정보 (암호화된 계좌번호는 서비스에서 복호화)
+      transactionBankName: json['transaction_bank_name'],
+      transactionAccountNumber: null, // 복호화는 별도 서비스에서 처리
+      transactionAccountHolder: json['transaction_account_holder'],
+      useDefaultAccount: json['use_default_account'] ?? true,
     );
   }
 
@@ -92,6 +111,7 @@ class ProductModel {
       'images': images,
       'category': category,
       'seller_id': sellerId,
+      'shop_id': shopId,
       'resale_enabled': resaleEnabled,
       'resale_fee': resaleFee,
       'resale_fee_percentage': resaleFeePercentage,
@@ -100,6 +120,10 @@ class ProductModel {
       'updated_at': updatedAt.toIso8601String(),
       if (sellerName != null) 'seller_name': sellerName,
       if (sellerProfileImage != null) 'seller_profile_image': sellerProfileImage,
+      // 거래용 계좌정보
+      'transaction_bank_name': transactionBankName,
+      'transaction_account_holder': transactionAccountHolder,
+      'use_default_account': useDefaultAccount,
     };
   }
 
@@ -112,6 +136,7 @@ class ProductModel {
     List<String>? images,
     String? category,
     String? sellerId,
+    String? shopId,
     bool? resaleEnabled,
     int? resaleFee,
     double? resaleFeePercentage,
@@ -120,6 +145,11 @@ class ProductModel {
     DateTime? updatedAt,
     String? sellerName,
     String? sellerProfileImage,
+    // 거래용 계좌정보
+    String? transactionBankName,
+    String? transactionAccountNumber,
+    String? transactionAccountHolder,
+    bool? useDefaultAccount,
   }) {
     return ProductModel(
       id: id ?? this.id,
@@ -129,6 +159,7 @@ class ProductModel {
       images: images ?? this.images,
       category: category ?? this.category,
       sellerId: sellerId ?? this.sellerId,
+      shopId: shopId ?? this.shopId,
       resaleEnabled: resaleEnabled ?? this.resaleEnabled,
       resaleFee: resaleFee ?? this.resaleFee,
       resaleFeePercentage: resaleFeePercentage ?? this.resaleFeePercentage,
@@ -137,6 +168,11 @@ class ProductModel {
       updatedAt: updatedAt ?? this.updatedAt,
       sellerName: sellerName ?? this.sellerName,
       sellerProfileImage: sellerProfileImage ?? this.sellerProfileImage,
+      // 거래용 계좌정보
+      transactionBankName: transactionBankName ?? this.transactionBankName,
+      transactionAccountNumber: transactionAccountNumber ?? this.transactionAccountNumber,
+      transactionAccountHolder: transactionAccountHolder ?? this.transactionAccountHolder,
+      useDefaultAccount: useDefaultAccount ?? this.useDefaultAccount,
     );
   }
 
@@ -161,6 +197,21 @@ class ProductModel {
   // 가격 포맷팅 (천단위 콤마)
   String get formattedPrice => '${price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
   String get formattedResaleFee => '${resaleFee.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}원';
+  
+  // 💳 계좌 관련 헬퍼 메서드들
+  bool get hasCustomAccount => !useDefaultAccount && 
+      transactionBankName != null && 
+      transactionAccountNumber != null && 
+      transactionAccountHolder != null;
+      
+  // 계좌 정보 표시 (상품별 또는 기본 계좌)
+  String get accountDisplayType => useDefaultAccount ? '기본 계좌 사용' : '상품별 계좌 설정';
+  
+  // 거래용 계좌 정보 전체 표시
+  String? get transactionAccountDisplay {
+    if (!hasCustomAccount) return null;
+    return '$transactionBankName $transactionAccountNumber ($transactionAccountHolder)';
+  }
 }
 
 // 카테고리 enum

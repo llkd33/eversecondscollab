@@ -1,277 +1,283 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
-import '../models/product_model.dart';
-import 'common/optimized_image.dart';
 
 class ProductCard extends StatelessWidget {
-  final ProductModel product;
+  final String id;
+  final String title;
+  final int price;
+  final String? imageUrl;
+  final String sellerName;
+  final int sellerLevel;
+  final bool isResaleEnabled;
+  final String? location;
+  final DateTime createdAt;
   final VoidCallback? onTap;
   final VoidCallback? onFavoritePressed;
   final bool isFavorite;
-  final bool showResaleBadge;
 
   const ProductCard({
     super.key,
-    required this.product,
+    required this.id,
+    required this.title,
+    required this.price,
+    this.imageUrl,
+    required this.sellerName,
+    required this.sellerLevel,
+    this.isResaleEnabled = false,
+    this.location,
+    required this.createdAt,
     this.onTap,
     this.onFavoritePressed,
     this.isFavorite = false,
-    this.showResaleBadge = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap ?? () => context.push('/product/detail/${product.id}'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      child: InkWell(
+        onTap: onTap ?? () => context.push('/product/$id'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 이미지 및 상태 배지
+            // 상품 이미지
             Expanded(
               flex: 3,
-              child: _buildImageSection(),
+              child: Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                    ),
+                    child: imageUrl != null
+                        ? Image.network(
+                            imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildPlaceholderImage(),
+                          )
+                        : _buildPlaceholderImage(),
+                  ),
+                  
+                  // 대신팔기 가능 뱃지
+                  if (isResaleEnabled)
+                    Positioned(
+                      top: AppSpacing.sm,
+                      left: AppSpacing.sm,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.successColor,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '대신팔기',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  
+                  // 찜하기 버튼
+                  Positioned(
+                    top: AppSpacing.sm,
+                    right: AppSpacing.sm,
+                    child: GestureDetector(
+                      onTap: onFavoritePressed,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          size: 16,
+                          color: isFavorite ? Colors.red : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             
             // 상품 정보
             Expanded(
               flex: 2,
-              child: _buildProductInfo(),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 상품 제목
+                    Text(
+                      title,
+                      style: AppStyles.bodyMedium.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    
+                    // 가격
+                    Text(
+                      '₩${_formatPrice(price)}',
+                      style: AppStyles.priceText.copyWith(fontSize: 16),
+                    ),
+                    
+                    const Spacer(),
+                    
+                    // 판매자 정보 및 위치
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 12,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                        Expanded(
+                          child: Text(
+                            sellerName,
+                            style: AppStyles.bodySmall,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _getLevelColor(sellerLevel).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Lv.$sellerLevel',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: _getLevelColor(sellerLevel),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    if (location != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 10,
+                            color: Colors.grey[500],
+                          ),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              location!,
+                              style: AppStyles.bodySmall.copyWith(
+                                fontSize: 10,
+                                color: Colors.grey[500],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            _getTimeAgo(createdAt),
+                            style: AppStyles.bodySmall.copyWith(
+                              fontSize: 10,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
   }
-  
-  Widget _buildImageSection() {
-    return Stack(
-      children: [
-        // 메인 이미지
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(12),
-              topRight: Radius.circular(12),
-            ),
-            color: Colors.grey[100],
-          ),
-          child: product.images.isNotEmpty
-              ? ProductImageOptimized(
-                  imageUrl: product.images.first,
-                  width: double.infinity,
-                  height: double.infinity,
-                )
-              : _buildPlaceholderImage(),
-        ),
-        
-        // 상태 배지들
-        Positioned(
-          top: 8,
-          left: 8,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 대신팔기 배지
-              if (showResaleBadge && product.resaleEnabled)
-                _buildBadge(
-                  '대신팔기',
-                  AppTheme.primaryColor,
-                  Colors.white,
-                ),
-              
-              const SizedBox(height: 4),
-              
-              // 판매완료 배지
-              if (product.status == '판매완료')
-                _buildBadge(
-                  '판매완료',
-                  Colors.grey[600]!,
-                  Colors.white,
-                ),
-            ],
-          ),
-        ),
-        
-        // 찜 버튼
-        if (onFavoritePressed != null)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: GestureDetector(
-              onTap: onFavoritePressed,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: isFavorite ? Colors.red : Colors.grey[600],
-                  size: 18,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-  
-  Widget _buildProductInfo() {
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 상품명
-          Text(
-            product.title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          
-          const Spacer(),
-          
-          // 가격
-          Text(
-            _formatPrice(product.price),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.primaryColor,
-            ),
-          ),
-          
-          const SizedBox(height: 4),
-          
-          // 부가 정보
-          Row(
-            children: [
-              // 카테고리
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  product.category,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
-              
-              const Spacer(),
-              
-              // 대신팔기 수수료 정보
-              if (product.resaleEnabled && product.resaleFee > 0)
-                Text(
-                  '수수료 ${_formatPrice(product.resaleFee)}',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                ),
-            ],
-          ),
-        ],
+
+  Widget _buildPlaceholderImage() {
+    return const Center(
+      child: Icon(
+        Icons.image_outlined,
+        size: 40,
+        color: Colors.grey,
       ),
     );
   }
 
-  Widget _buildPlaceholderImage() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
-        ),
-      ),
-      child: Icon(
-        Icons.image_outlined,
-        size: 40,
-        color: Colors.grey[400],
-      ),
-    );
-  }
-  
-  Widget _buildBadge(String text, Color backgroundColor, Color textColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 6,
-        vertical: 3,
-      ),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-      ),
-    );
-  }
-  
   String _formatPrice(int price) {
-    if (price >= 10000) {
-      if (price % 10000 == 0) {
-        return '${(price / 10000).toInt()}만원';
-      } else {
-        return '${(price / 10000).toStringAsFixed(1)}만원';
-      }
-    } else {
-      return '${_numberWithCommas(price)}원';
-    }
-  }
-  
-  String _numberWithCommas(int number) {
-    final formatter = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
-    return number.toString().replaceAllMapped(
-      formatter,
-      (match) => '${match[1]},',
+    return price.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
     );
+  }
+
+  Color _getLevelColor(int level) {
+    if (level >= 5) return AppTheme.successColor;
+    if (level >= 3) return AppTheme.primaryColor;
+    return Colors.grey;
+  }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}일 전';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}시간 전';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}분 전';
+    } else {
+      return '방금 전';
+    }
   }
 }
 
 // 간단한 상품 카드 (리스트뷰용)
 class ProductListCard extends StatelessWidget {
-  final ProductModel product;
+  final String id;
+  final String title;
+  final int price;
+  final String? imageUrl;
+  final String sellerName;
+  final int sellerLevel;
+  final bool isResaleEnabled;
+  final String? location;
+  final DateTime createdAt;
   final VoidCallback? onTap;
 
   const ProductListCard({
     super.key,
-    required this.product,
+    required this.id,
+    required this.title,
+    required this.price,
+    this.imageUrl,
+    required this.sellerName,
+    required this.sellerLevel,
+    this.isResaleEnabled = false,
+    this.location,
+    required this.createdAt,
     this.onTap,
   });
 
@@ -279,11 +285,11 @@ class ProductListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 4,
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
+        contentPadding: const EdgeInsets.all(AppSpacing.md),
         leading: Container(
           width: 60,
           height: 60,
@@ -291,10 +297,15 @@ class ProductListCard extends StatelessWidget {
             color: Colors.grey[200],
             borderRadius: BorderRadius.circular(8),
           ),
-          child: product.thumbnailImage != null
-              ? OptimizedThumbnail(
-                  imageUrl: product.thumbnailImage!,
-                  size: 80,
+          child: imageUrl != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    imageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.image_outlined),
+                  ),
                 )
               : const Icon(Icons.image_outlined),
         ),
@@ -302,22 +313,22 @@ class ProductListCard extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                product.title,
-                style: const TextStyle(
+                title,
+                style: AppStyles.bodyMedium.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (product.resaleEnabled)
+            if (isResaleEnabled)
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 6,
                   vertical: 2,
                 ),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
+                  color: AppTheme.successColor,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
@@ -334,62 +345,56 @@ class ProductListCard extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(
-              product.formattedPrice,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryColor,
-              ),
+              '₩${_formatPrice(price)}',
+              style: AppStyles.priceText.copyWith(fontSize: 16),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Row(
               children: [
                 Text(
-                  product.sellerName ?? '판매자',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  sellerName,
+                  style: AppStyles.bodySmall,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  product.category,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+                const SizedBox(width: AppSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Lv.$sellerLevel',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  _formatDate(product.createdAt),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[500],
+                if (location != null)
+                  Text(
+                    location!,
+                    style: AppStyles.bodySmall.copyWith(fontSize: 10),
                   ),
-                ),
               ],
             ),
           ],
         ),
-        onTap: onTap ?? () => context.push('/product/detail/${product.id}'),
+        onTap: onTap ?? () => context.push('/product/$id'),
       ),
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}일 전';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}시간 전';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}분 전';
-    } else {
-      return '방금 전';
-    }
+  String _formatPrice(int price) {
+    return price.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
   }
 }
