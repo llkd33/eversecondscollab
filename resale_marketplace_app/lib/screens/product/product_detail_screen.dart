@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../theme/app_theme.dart';
 import '../../models/product_model.dart';
@@ -992,9 +994,82 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   // 상품 공유
   void _shareProduct() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('공유 기능 준비중입니다')));
+    if (_product == null) return;
+
+    final productLink = 'https://everseconds.com/product/${_product!.id}';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${_product!.title} 공유하기'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('이 상품을 친구들에게 공유해보세요!'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      productLink,
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 16),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: productLink));
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: Colors.white, size: 20),
+                              SizedBox(width: 8),
+                              Text('링크가 클립보드에 복사되었습니다'),
+                            ],
+                          ),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('닫기'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Share.share(
+                '${_product!.title}\n가격: ${_product!.formattedPrice}\n\n상품 보기: $productLink',
+                subject: _product!.title,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('공유하기'),
+          ),
+        ],
+      ),
+    );
   }
 
   // 날짜 포맷팅

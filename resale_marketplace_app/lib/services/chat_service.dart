@@ -208,19 +208,79 @@ class ChatService {
     }
   }
 
-  // 기본 채팅방 목록 조회 (fallback)
+  // 기본 채팅방 목록 조회 (fallback) - 최적화 버전
   Future<List<ChatModel>> _getMyChatsBasic(String userId) async {
     try {
-      final response = await _client
+      // 1️⃣ 채팅방 정보와 상품 정보를 JOIN으로 한번에 가져오기
+      final chatsResponse = await _client
           .from('chats')
           .select('*, products(title, images, price)')
           .contains('participants', [userId])
           .order('updated_at', ascending: false);
 
-      List<ChatModel> chats = [];
+      if ((chatsResponse as List).isEmpty) return [];
 
-      for (final item in response as List) {
+      // 2️⃣ 모든 채팅방 ID 수집
+      final chatIds = (chatsResponse as List)
+          .map((chat) => chat['id'] as String)
+          .where(UuidUtils.isValid)
+          .toList();
+
+      if (chatIds.isEmpty) return [];
+
+      // 3️⃣ 마지막 메시지들을 한번에 가져오기 (DISTINCT ON 사용)
+      final messagesResponse = await _client
+          .from('messages')
+          .select('id, chat_id, content, created_at, sender_id')
+          .inFilter('chat_id', chatIds)
+          .order('chat_id')
+          .order('created_at', ascending: false);
+
+      // 각 채팅방별 마지막 메시지 매핑
+      final Map<String, Map<String, dynamic>> lastMessageMap = {};
+      for (final msg in messagesResponse as List) {
+        final chatId = msg['chat_id'] as String;
+        if (!lastMessageMap.containsKey(chatId)) {
+          lastMessageMap[chatId] = msg;
+        }
+      }
+
+      // 4️⃣ 읽지 않은 메시지 개수를 한번에 가져오기
+      final readStatusResponse = await _client
+          .from('user_chat_read_status')
+          .select('chat_id, last_read_at')
+          .eq('user_id', userId)
+          .inFilter('chat_id', chatIds);
+
+      // 읽음 상태 매핑
+      final Map<String, DateTime> readStatusMap = {};
+      for (final status in readStatusResponse as List) {
+        final chatId = status['chat_id'] as String;
+        final lastReadAt = status['last_read_at'] != null
+            ? DateTime.parse(status['last_read_at'])
+            : DateTime.fromMillisecondsSinceEpoch(0);
+        readStatusMap[chatId] = lastReadAt;
+      }
+
+      // 5️⃣ 읽지 않은 메시지 개수 계산 (메모리에서 처리)
+      final Map<String, int> unreadCountMap = {};
+      for (final msg in messagesResponse as List) {
+        final chatId = msg['chat_id'] as String;
+        final senderId = msg['sender_id'] as String;
+        final createdAt = DateTime.parse(msg['created_at']);
+        final lastReadAt = readStatusMap[chatId] ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+        // 다른 사용자가 보낸 메시지이고, 마지막 읽음 시간 이후인 경우
+        if (senderId != userId && createdAt.isAfter(lastReadAt)) {
+          unreadCountMap[chatId] = (unreadCountMap[chatId] ?? 0) + 1;
+        }
+      }
+
+      // 6️⃣ 최종 데이터 조합
+      List<ChatModel> chats = [];
+      for (final item in chatsResponse as List) {
         final chat = ChatModel.fromJson(item);
+        final chatId = chat.id;
 
         // 상품 정보 추가
         ChatModel updatedChat = chat;
@@ -235,14 +295,13 @@ class ChatService {
           );
         }
 
-        // 마지막 메시지 정보 조회
-        final lastMessage = await _getLastMessage(chat.id);
-        if (lastMessage != null) {
-          final unreadCount = await _getUnreadCount(chat.id, userId);
+        // 마지막 메시지와 읽지 않은 개수 추가
+        final lastMsg = lastMessageMap[chatId];
+        if (lastMsg != null) {
           updatedChat = updatedChat.copyWith(
-            lastMessage: lastMessage.content,
-            lastMessageTime: lastMessage.createdAt,
-            unreadCount: unreadCount,
+            lastMessage: lastMsg['content'],
+            lastMessageTime: DateTime.parse(lastMsg['created_at']),
+            unreadCount: unreadCountMap[chatId] ?? 0,
           );
         }
 

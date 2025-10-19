@@ -9,38 +9,46 @@ class KakaoConfig {
     defaultValue: 'YOUR_KAKAO_NATIVE_APP_KEY',
   );
 
+  // ⚠️ SECURITY: 하드코딩된 키는 보안상 위험합니다.
+  // 실제 운영 환경에서는 반드시 환경변수를 사용하세요.
   static const String javaScriptKey = String.fromEnvironment(
     'KAKAO_JAVASCRIPT_KEY',
-    defaultValue: 'bcbbbc27c5bfa788f960c55acdd1c90a',
+    defaultValue: '',
   );
 
   static const String restApiKey = String.fromEnvironment(
     'KAKAO_REST_API_KEY',
-    defaultValue: '08f48ea45b011427cecdf40eb9988e26',
+    defaultValue: '',
   );
 
   // 개발/운영 환경별 설정
   static const String developmentNativeAppKey = String.fromEnvironment(
     'KAKAO_DEV_NATIVE_APP_KEY',
-    defaultValue: '0d0b331b737c31682e666aadc2d97763', // 개발용 실제 키
+    defaultValue: '',
   );
 
   static const String productionNativeAppKey = String.fromEnvironment(
     'KAKAO_PROD_NATIVE_APP_KEY',
-    defaultValue: '0d0b331b737c31682e666aadc2d97763', // 운영용 (동일 키 사용)
+    defaultValue: '',
   );
 
   // 현재 환경에 맞는 앱 키 반환
   static String get currentNativeAppKey {
     const bool isProduction = bool.fromEnvironment('dart.vm.product');
     if (isProduction) {
-      return productionNativeAppKey != 'YOUR_PROD_KAKAO_NATIVE_APP_KEY'
-          ? productionNativeAppKey
-          : nativeAppKey;
+      // 운영 환경: KAKAO_PROD_NATIVE_APP_KEY -> KAKAO_NATIVE_APP_KEY 순서로 확인
+      if (productionNativeAppKey.isNotEmpty &&
+          productionNativeAppKey != 'YOUR_PROD_KAKAO_NATIVE_APP_KEY') {
+        return productionNativeAppKey;
+      }
+      return nativeAppKey;
     } else {
-      return developmentNativeAppKey != 'YOUR_DEV_KAKAO_NATIVE_APP_KEY'
-          ? developmentNativeAppKey
-          : nativeAppKey;
+      // 개발 환경: KAKAO_DEV_NATIVE_APP_KEY -> KAKAO_NATIVE_APP_KEY 순서로 확인
+      if (developmentNativeAppKey.isNotEmpty &&
+          developmentNativeAppKey != 'YOUR_DEV_KAKAO_NATIVE_APP_KEY') {
+        return developmentNativeAppKey;
+      }
+      return nativeAppKey;
     }
   }
 

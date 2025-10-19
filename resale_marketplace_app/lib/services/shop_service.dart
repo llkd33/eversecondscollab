@@ -562,28 +562,16 @@ class ShopService {
     try {
       final response = await _client
           .from('products')
-          .select('id', const FetchOptions(count: CountOption.exact))
+          .select('id')
           .eq('seller_id', ownerId);
-      
-      if (response is PostgrestResponse) {
-        return response.count ?? 0;
-      } else if (response is List) {
+
+      if (response is List) {
         return response.length;
       }
       return 0;
     } catch (e) {
       print('Error counting products: $e');
-      // Fallback: 직접 리스트 길이 계산
-      try {
-        final response = await _client
-            .from('products')
-            .select('id')
-            .eq('seller_id', ownerId);
-        return (response as List?)?.length ?? 0;
-      } catch (fallbackError) {
-        print('Fallback product count also failed: $fallbackError');
-        return 0;
-      }
+      return 0;
     }
   }
 
@@ -592,30 +580,17 @@ class ShopService {
     try {
       final response = await _client
           .from('shop_products')
-          .select('id', const FetchOptions(count: CountOption.exact))
+          .select('id')
           .eq('shop_id', shopId)
           .eq('is_resale', true);
-      
-      if (response is PostgrestResponse) {
-        return response.count ?? 0;
-      } else if (response is List) {
+
+      if (response is List) {
         return response.length;
       }
       return 0;
     } catch (e) {
       print('Error counting resale products: $e');
-      // Fallback: 직접 리스트 길이 계산
-      try {
-        final response = await _client
-            .from('shop_products')
-            .select('id')
-            .eq('shop_id', shopId)
-            .eq('is_resale', true);
-        return (response as List?)?.length ?? 0;
-      } catch (fallbackError) {
-        print('Fallback resale product count also failed: $fallbackError');
-        return 0;
-      }
+      return 0;
     }
   }
 
@@ -624,13 +599,11 @@ class ShopService {
     try {
       final response = await _client
           .from('transactions')
-          .select('id', const FetchOptions(count: CountOption.exact))
+          .select('id')
           .or('seller_id.eq.$ownerId,reseller_id.eq.$ownerId')
           .eq('status', '거래완료');
-      
-      if (response is PostgrestResponse) {
-        return response.count ?? 0;
-      } else if (response is List) {
+
+      if (response is List) {
         return response.length;
       }
       return 0;
