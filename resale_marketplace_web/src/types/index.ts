@@ -69,3 +69,24 @@ export enum TransactionStatus {
   CANCELLED = 'cancelled',
   DISPUTED = 'disputed',
 }
+
+export interface Shop {
+  id: string;
+  name: string;
+  description?: string;
+  owner_id: string;
+  share_url: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ShopProduct {
+  id: string;
+  title: string;
+  price: number;
+  images: string[];
+  resale_enabled: boolean;
+  resale_fee_percentage?: number;
+  status: string;
+  created_at: Date;
+}
