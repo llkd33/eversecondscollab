@@ -157,7 +157,7 @@ export default function ProductDetailPage() {
                 )}
                 
                 {/* Status Badge */}
-                {product.status === 'sold' && (
+                {product.status === ProductStatus.SOLD && (
                   <div className="absolute top-4 left-4 bg-gray-900 bg-opacity-75 text-white px-4 py-2 rounded-lg text-lg font-semibold">
                     판매완료
                   </div>
