@@ -3,7 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Product } from '@/types';
+import { Product, ProductStatus } from '@/types';
 
 interface ProductCardProps {
   product: Product;
@@ -54,7 +54,7 @@ export default function ProductCard({ product, isKioskMode = false }: ProductCar
           )}
           
           {/* Status Badge */}
-          {product.status === 'sold' && (
+          {product.status === ProductStatus.SOLD && (
             <div className="absolute top-2 left-2 bg-gray-900 bg-opacity-75 text-white px-3 py-1 rounded-lg text-sm font-semibold">
               판매완료
             </div>
