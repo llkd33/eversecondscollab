@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #F5F5F5;
   --foreground: #171717;
+
+  /* Flutter App Theme Colors */
+  --primary: #2196F3;
+  --secondary: #FF9800;
+  --success: #38A169;
+  --error: #E53E3E;
+  --surface: #FFFFFF;
 }
 
 @theme inline {
@@ -10,6 +17,13 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Custom Colors from Flutter App */
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-surface: var(--surface);
 }
 
 @media (prefers-color-scheme: dark) {
