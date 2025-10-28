@@ -4,70 +4,47 @@ import React, { useState, useEffect } from 'react';
 import ProductCard from '@/components/ProductCard';
 import CategoryFilter from '@/components/CategoryFilter';
 import { Product, Category, ProductStatus } from '@/types';
-
-// Mock data - In production, this would come from Supabase
-const mockCategories: Category[] = [
-  { id: '1', name: '의류', slug: 'clothing' },
-  { id: '2', name: '전자기기', slug: 'electronics' },
-  { id: '3', name: '생활용품', slug: 'home' },
-  { id: '4', name: '스포츠', slug: 'sports' },
-  { id: '5', name: '뷰티', slug: 'beauty' },
-];
-
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    title: '나이키 운동화 270 리액트',
-    price: 85000,
-    description: '거의 새 제품입니다. 3번 정도만 착용했어요.',
-    images: ['/api/placeholder/400/400'],
-    category: mockCategories[3],
-    sellerId: 'user1',
-    sellerInfo: {
-      id: 'user1',
-      name: '김철수',
-      level: 5,
-      rating: 4.8,
-      totalTransactions: 42,
-      successRate: 98,
-    },
-    resaleEnabled: true,
-    commissionRate: 15,
-    status: ProductStatus.ACTIVE,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: '2',
-    title: '아이패드 프로 11인치 3세대',
-    price: 750000,
-    description: '박스 풀세트, 애플케어+ 가입',
-    images: ['/api/placeholder/400/400'],
-    category: mockCategories[1],
-    sellerId: 'user2',
-    sellerInfo: {
-      id: 'user2',
-      name: '이영희',
-      level: 3,
-      rating: 4.5,
-      totalTransactions: 15,
-      successRate: 95,
-    },
-    resaleEnabled: true,
-    commissionRate: 10,
-    status: ProductStatus.ACTIVE,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  // Add more mock products as needed
-];
+import { productService } from '@/lib/supabase/products';
+import { colors } from '@/lib/theme';
 
 export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isKioskMode, setIsKioskMode] = useState(false);
-  const [products, setProducts] = useState<Product[]>(mockProducts);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>(mockProducts);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load categories and products from Supabase
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Load categories
+        const categoriesData = await productService.getCategories();
+        setCategories(categoriesData);
+
+        // Load products
+        const productsData = await productService.getProducts({
+          status: ProductStatus.ACTIVE,
+          limit: 50,
+        });
+        setProducts(productsData);
+        setFilteredProducts(productsData);
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setError('데이터를 불러오는데 실패했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   // Detect kiosk mode (could be based on URL parameter or screen size)
   useEffect(() => {
@@ -76,7 +53,7 @@ export default function HomePage() {
       const kioskParam = urlParams.get('kiosk');
       const isTouchDevice = 'ontouchstart' in window;
       const isLargeScreen = window.innerWidth >= 1024;
-      
+
       setIsKioskMode(kioskParam === 'true' || (isTouchDevice && isLargeScreen));
     };
 
@@ -112,11 +89,17 @@ export default function HomePage() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className={`font-bold text-blue-600 ${isKioskMode ? 'text-3xl' : 'text-2xl'}`}>
+              <h1
+                className={`font-bold ${isKioskMode ? 'text-3xl' : 'text-2xl'}`}
+                style={{ color: colors.primary }}
+              >
                 에버세컨즈
               </h1>
               {isKioskMode && (
-                <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-lg text-sm font-semibold">
+                <span
+                  className="px-3 py-1 rounded-lg text-sm font-semibold text-white"
+                  style={{ backgroundColor: colors.accent }}
+                >
                   키오스크 모드
                 </span>
               )}
@@ -160,14 +143,23 @@ export default function HomePage() {
                 alert('앱 다운로드 QR 코드 표시');
               }}
               className={`
-                bg-blue-600 text-white font-medium rounded-lg
-                hover:bg-blue-700 transition-colors duration-200
+                text-white font-medium rounded-lg
+                transition-colors duration-200
                 flex items-center gap-2
                 ${isKioskMode ? 'px-6 py-3 text-lg' : 'px-4 py-2 text-base'}
               `}
+              style={{
+                backgroundColor: colors.secondary,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = colors.secondaryDark;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = colors.secondary;
+              }}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
               앱 설치
@@ -177,65 +169,117 @@ export default function HomePage() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        {/* Category Filter */}
-        <CategoryFilter
-          categories={mockCategories}
-          selectedCategory={selectedCategory}
-          onCategorySelect={setSelectedCategory}
-          isKioskMode={isKioskMode}
-        />
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: colors.primary }}></div>
+          </div>
+        )}
 
-        {/* Product Grid */}
-        <div className="mt-6">
-          {filteredProducts.length > 0 ? (
-            <div className={`
-              grid gap-4
-              ${isKioskMode 
-                ? 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' 
-                : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
-              }
-            `}>
-              {filteredProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  isKioskMode={isKioskMode}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16">
-              <svg
-                className="mx-auto h-12 w-12 text-gray-400 mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                />
-              </svg>
-              <p className="text-gray-500 text-lg">검색 결과가 없습니다</p>
-            </div>
-          )}
-        </div>
-
-        {/* Load More Button */}
-        {filteredProducts.length > 0 && (
-          <div className="mt-8 text-center">
-            <button
-              className={`
-                bg-white border-2 border-gray-300 text-gray-700 font-medium rounded-lg
-                hover:bg-gray-50 transition-colors duration-200
-                ${isKioskMode ? 'px-8 py-4 text-lg' : 'px-6 py-3 text-base'}
-              `}
+        {/* Error State */}
+        {error && (
+          <div className="text-center py-16">
+            <svg
+              className="mx-auto h-12 w-12 mb-4"
+              style={{ color: colors.error }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              더 보기
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-gray-700 text-lg mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg text-white font-medium"
+              style={{ backgroundColor: colors.primary }}
+            >
+              다시 시도
             </button>
           </div>
+        )}
+
+        {/* Content */}
+        {!loading && !error && (
+          <>
+            {/* Category Filter */}
+            <CategoryFilter
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onCategorySelect={setSelectedCategory}
+              isKioskMode={isKioskMode}
+            />
+
+            {/* Product Grid */}
+            <div className="mt-6">
+              {filteredProducts.length > 0 ? (
+                <div className={`
+                  grid gap-4
+                  ${isKioskMode
+                    ? 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                    : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
+                  }
+                `}>
+                  {filteredProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      isKioskMode={isKioskMode}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <svg
+                    className="mx-auto h-12 w-12 text-gray-400 mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                    />
+                  </svg>
+                  <p className="text-gray-500 text-lg">
+                    {products.length === 0 ? '등록된 상품이 없습니다' : '검색 결과가 없습니다'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Load More Button */}
+            {filteredProducts.length > 0 && products.length >= 50 && (
+              <div className="mt-8 text-center">
+                <button
+                  className={`
+                    bg-white font-medium rounded-lg
+                    transition-colors duration-200
+                    ${isKioskMode ? 'px-8 py-4 text-lg' : 'px-6 py-3 text-base'}
+                  `}
+                  style={{
+                    border: `2px solid ${colors.primary}`,
+                    color: colors.primary,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = colors.primaryLight;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'white';
+                  }}
+                >
+                  더 보기
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -246,10 +290,19 @@ export default function HomePage() {
             // Show help or information
             alert('도움말 표시');
           }}
-          className="fixed bottom-8 right-8 bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 transition-colors duration-200"
+          className="fixed bottom-8 right-8 text-white rounded-full p-4 shadow-lg transition-colors duration-200"
+          style={{
+            backgroundColor: colors.secondary,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = colors.secondaryDark;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = colors.secondary;
+          }}
         >
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>

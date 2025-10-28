@@ -1,19 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { transactionService } from '@/lib/supabase/transactions';
+import { productService } from '@/lib/supabase/products';
+import { userService } from '@/lib/supabase/users';
+import { colors } from '@/lib/theme';
 
-// Mock data - In production, this would come from Supabase
-const mockStats = {
-  totalUsers: 1247,
-  totalSellers: 342,
-  totalResellers: 156,
-  totalProducts: 2834,
-  totalTransactions: 1892,
-  totalRevenue: 45670000,
-  monthlyGrowth: 12.5,
-  activeDisputes: 8
-};
+interface DashboardStats {
+  totalUsers: number;
+  totalProducts: number;
+  totalTransactions: number;
+  pendingTransactions: number;
+  completedTransactions: number;
+  totalRevenue: number;
+}
 
 const mockRecentTransactions = [
   {
