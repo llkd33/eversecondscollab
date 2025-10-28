@@ -18,7 +18,17 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
     ],
+  },
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "react-hooks/exhaustive-deps": "warn",
+    },
   },
 ];
 

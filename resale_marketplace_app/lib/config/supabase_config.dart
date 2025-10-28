@@ -7,10 +7,11 @@ class SupabaseConfig {
   static const String supabaseAnonKey =
       String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
 
-  static const String _defaultSupabaseUrl =
-      'https://ewhurbwdqiemeuwdtpeg.supabase.co';
-  static const String _defaultSupabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3aHVyYndkcWllbWV1d2R0cGVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzNzk5MzcsImV4cCI6MjA3MTk1NTkzN30.CKQh2HqJWzadYgxoaqaBKFuJd9n6Zz54eSueVkR6GmQ';
+  // ⚠️ SECURITY: 하드코딩된 키는 보안상 위험합니다.
+  // 실제 운영 환경에서는 반드시 환경변수를 사용하세요.
+  // flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+  static const String _defaultSupabaseUrl = 'https://ewhurbwdqiemeuwdtpeg.supabase.co';
+  static const String _defaultSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3aHVyYndkcWllbWV1d2R0cGVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzNzk5MzcsImV4cCI6MjA3MTk1NTkzN30.CKQh2HqJWzadYgxoaqaBKFuJd9n6Zz54eSueVkR6GmQ';
 
   static String get resolvedSupabaseUrl {
     final raw = supabaseUrl.isNotEmpty ? supabaseUrl : _defaultSupabaseUrl;

@@ -34,10 +34,10 @@ export interface Category {
 }
 
 export enum ProductStatus {
-  ACTIVE = 'active',
-  SOLD = 'sold',
-  RESERVED = 'reserved',
-  HIDDEN = 'hidden',
+  ACTIVE = '판매중',
+  SOLD = '판매완료',
+  RESERVED = '예약중',
+  HIDDEN = '숨김',
 }
 
 export interface ResaleItem {
@@ -68,4 +68,25 @@ export enum TransactionStatus {
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   DISPUTED = 'disputed',
+}
+
+export interface Shop {
+  id: string;
+  name: string;
+  description?: string;
+  owner_id: string;
+  share_url: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ShopProduct {
+  id: string;
+  title: string;
+  price: number;
+  images: string[];
+  resale_enabled: boolean;
+  resale_fee_percentage?: number;
+  status: string;
+  created_at: Date;
 }

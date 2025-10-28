@@ -343,7 +343,7 @@ class ShopService {
     }
   }
 
-  // 샵의 직접 등록 상품 조회 (판매중만)
+  // 샵의 직접 등록 상품 조회
   Future<List<ProductModel>> getShopProducts(String shopId) async {
     try {
       final ownerRow = await _client
@@ -394,60 +394,6 @@ class ShopService {
       return products;
     } catch (e) {
       print('Error getting shop products: $e');
-      return [];
-    }
-  }
-
-  // 샵의 모든 직접 등록 상품 조회 (판매중 + 판매완료)
-  Future<List<ProductModel>> getAllShopProducts(String shopId) async {
-    try {
-      final ownerRow = await _client
-          .from('shops')
-          .select('owner_id')
-          .eq('id', shopId)
-          .maybeSingle();
-
-      if (ownerRow == null) return [];
-
-      final ownerId = ownerRow['owner_id'] as String?;
-      if (ownerId == null || ownerId.isEmpty) return [];
-
-      final response = await _client
-          .from('products')
-          .select('id')
-          .eq('seller_id', ownerId)
-          .order('created_at', ascending: false);
-
-      if (response is! List || response.isEmpty) return [];
-
-      final productIds = <String>[];
-      for (final item in response) {
-        final id = item['id'] as String?;
-        if (id != null && id.isNotEmpty) {
-          productIds.add(id);
-        }
-      }
-
-      if (productIds.isEmpty) return [];
-
-      final products = await _productService.getProductsByIds(productIds);
-
-      if (products.isEmpty) return [];
-
-      final orderMap = <String, int>{};
-      for (var i = 0; i < productIds.length; i++) {
-        orderMap[productIds[i]] = i;
-      }
-
-      products.sort((a, b) {
-        final aIndex = orderMap[a.id] ?? 0;
-        final bIndex = orderMap[b.id] ?? 0;
-        return aIndex.compareTo(bIndex);
-      });
-
-      return products;
-    } catch (e) {
-      print('Error getting all shop products: $e');
       return [];
     }
   }
@@ -510,7 +456,7 @@ class ShopService {
           .single();
 
       if (!productResponse['resale_enabled']) {
-        throw Exception('이 상품은 대신판매가 불가능합니다.');
+        throw Exception('This product is not available for resale');
       }
 
       // 수수료 계산
@@ -618,24 +564,14 @@ class ShopService {
           .from('products')
           .select('id')
           .eq('seller_id', ownerId);
-      
+
       if (response is List) {
         return response.length;
       }
       return 0;
     } catch (e) {
       print('Error counting products: $e');
-      // Fallback: 직접 리스트 길이 계산
-      try {
-        final response = await _client
-            .from('products')
-            .select('id')
-            .eq('seller_id', ownerId);
-        return (response as List?)?.length ?? 0;
-      } catch (fallbackError) {
-        print('Fallback product count also failed: $fallbackError');
-        return 0;
-      }
+      return 0;
     }
   }
 
@@ -647,25 +583,14 @@ class ShopService {
           .select('id')
           .eq('shop_id', shopId)
           .eq('is_resale', true);
-      
+
       if (response is List) {
         return response.length;
       }
       return 0;
     } catch (e) {
       print('Error counting resale products: $e');
-      // Fallback: 직접 리스트 길이 계산
-      try {
-        final response = await _client
-            .from('shop_products')
-            .select('id')
-            .eq('shop_id', shopId)
-            .eq('is_resale', true);
-        return (response as List?)?.length ?? 0;
-      } catch (fallbackError) {
-        print('Fallback resale product count also failed: $fallbackError');
-        return 0;
-      }
+      return 0;
     }
   }
 
@@ -677,7 +602,7 @@ class ShopService {
           .select('id')
           .or('seller_id.eq.$ownerId,reseller_id.eq.$ownerId')
           .eq('status', '거래완료');
-      
+
       if (response is List) {
         return response.length;
       }
@@ -686,17 +611,6 @@ class ShopService {
       print('Error counting transactions: $e');
       // transactions 테이블이 존재하지 않을 수 있으므로 0 반환
       return 0;
-    }
-  }
-
-  /// 샵 통계 새로고침 (실시간 업데이트용)
-  Future<Map<String, dynamic>> refreshShopStats(String shopId) async {
-    try {
-      print('🔄 샵 통계 새로고침: $shopId');
-      return await getShopStats(shopId);
-    } catch (e) {
-      print('❌ 샵 통계 새로고침 실패: $e');
-      return {};
     }
   }
 
