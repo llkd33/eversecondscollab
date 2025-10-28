@@ -1,0 +1,11 @@
+# 🔒 보안 관련 파일 - .gitignore에 추가 필요
+.env
+.env.local
+.env.production
+*.key
+*.pem
+google-services.json
+GoogleService-Info.plist
+
+# 민감한 설정 파일
+lib/config/secrets.dart

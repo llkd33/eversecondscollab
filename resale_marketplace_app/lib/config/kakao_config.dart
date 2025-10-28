@@ -6,14 +6,14 @@ class KakaoConfig {
   // 카카오 앱 키 (환경변수에서 가져오기, 없으면 기본값 사용)
   static const String nativeAppKey = String.fromEnvironment(
     'KAKAO_NATIVE_APP_KEY',
-    defaultValue: 'YOUR_KAKAO_NATIVE_APP_KEY',
+    defaultValue: 'd7hGLkmnlxhgv11Ww1dlae11fQX7wxW5',
   );
 
   // ⚠️ SECURITY: 하드코딩된 키는 보안상 위험합니다.
   // 실제 운영 환경에서는 반드시 환경변수를 사용하세요.
   static const String javaScriptKey = String.fromEnvironment(
     'KAKAO_JAVASCRIPT_KEY',
-    defaultValue: '',
+    defaultValue: 'bcbbbc27c5bfa788f960c55acdd1c90a',
   );
 
   static const String restApiKey = String.fromEnvironment(
@@ -24,12 +24,12 @@ class KakaoConfig {
   // 개발/운영 환경별 설정
   static const String developmentNativeAppKey = String.fromEnvironment(
     'KAKAO_DEV_NATIVE_APP_KEY',
-    defaultValue: '',
+    defaultValue: 'd7hGLkmnlxhgv11Ww1dlae11fQX7wxW5',
   );
 
   static const String productionNativeAppKey = String.fromEnvironment(
     'KAKAO_PROD_NATIVE_APP_KEY',
-    defaultValue: '',
+    defaultValue: 'd7hGLkmnlxhgv11Ww1dlae11fQX7wxW5',
   );
 
   // 현재 환경에 맞는 앱 키 반환

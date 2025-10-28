@@ -183,7 +183,7 @@ class _MyShopScreenState extends State<MyShopScreen>
   void _shareShopLink(BuildContext context) {
     if (_currentShop == null) return;
 
-    final shopLink = 'https://everseconds.com/shop/${_currentShop!.shareUrl}';
+    final shopLink = 'https://resalemarketplace-kea39vgf7-everseconds-projects.vercel.app/shop/${_currentShop!.shareUrl}';
 
     Clipboard.setData(ClipboardData(text: shopLink));
 

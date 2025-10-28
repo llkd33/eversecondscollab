@@ -72,23 +72,23 @@ dependencies:
   uuid: ^4.5.1
   share_plus: ^10.1.2
   logger: ^2.5.0
-  
+
   # Deep linking support
   app_links: ^6.3.2
-  
+
   # Realtime features
   realtime_client: ^2.5.1
-  
+
   # Push notifications
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.5
   flutter_local_notifications: ^18.0.1
-  
+
   # Additional UI components for chat
   flutter_chat_ui: ^1.6.15
   file_picker: ^8.1.4
   photo_view: ^0.15.0
-  emoji_picker_flutter: ^3.1.0
+  emoji_picker_flutter: ^4.0.0
 
 dev_dependencies:
   flutter_test:

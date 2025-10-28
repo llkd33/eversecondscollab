@@ -1,0 +1,372 @@
+================================================================================
+FLUTTER RESALE MARKETPLACE APP - ROUTING ARCHITECTURE DIAGRAM
+================================================================================
+
+ROUTER INITIALIZATION
+=====================
+┌─────────────────────────────────────────────────────────┐
+│  main.dart                                              │
+│  ├─ AppLinks initialization                            │
+│  ├─ Deep link listener setup                           │
+│  ├─ OAuth callback handler                             │
+│  └─ AppRouter.createRouter(context)                    │
+│     └─ GoRouter instance created with auth context     │
+└─────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────┐
+│  MaterialApp.router(routerConfig: AppRouter.router)    │
+└─────────────────────────────────────────────────────────┘
+
+
+ROUTE HIERARCHY
+===============
+
+GoRouter
+├── Auth Routes (No Auth Required)
+│   ├── /login
+│   ├── /signup (→ /signup/phone or /signup/kakao)
+│   ├── /phone-auth
+│   └── /auth/kakao/callback
+│
+├── ShellRoute (MainNavigationScreen with Bottom Nav)
+│   ├── / (Home - Public)
+│   ├── /chat (Protected)
+│   ├── /shop (Protected - User's Shop)
+│   └── /profile (Public)
+│
+├── Product Routes
+│   ├── /product/create (Protected)
+│   ├── /product/:id (Public)
+│   ├── /product/detail/:id (Public - Alternative)
+│   └── /my-products (Protected)
+│
+├── Transaction Routes
+│   ├── /transaction/create (Protected - Extra Data)
+│   ├── /transaction/list (Protected)
+│   └── /transaction/:id (Protected)
+│
+├── Chat Routes
+│   ├── /chat_room (Protected - Extra Data)
+│   └── /reviews (Public - Extra Data)
+│
+├── Resale Routes
+│   ├── /resale/browse (Public)
+│   └── /resale/manage (Protected)
+│
+├── Review Routes
+│   ├── /review/create (Protected - Extra Data)
+│   └── /transaction/:transactionId/reviews (Protected)
+│
+├── Admin Routes (Admin Only)
+│   ├── /admin
+│   ├── /admin/web
+│   ├── /admin/users
+│   ├── /admin/transactions
+│   └── /admin/reports
+│
+├── Other Routes
+│   ├── /search (Public)
+│   ├── /revenue-management (Protected)
+│   ├── /shop/:shareUrl (Public - Share Link)
+│   └── /coming-soon (Public - Extra Data)
+
+
+PARAMETER PASSING PATTERNS
+==========================
+
+Path Parameters (URL - Shareable)
+┌──────────────────────────────────────────┐
+│ /product/:id                             │
+│ Usage: context.push('/product/abc-123')  │
+│ Extract: state.pathParameters['id']      │
+└──────────────────────────────────────────┘
+
+Query Parameters (URL - Shareable)
+┌──────────────────────────────────────────┐
+│ /login?redirect=/chat                    │
+│ Usage: context.go('/login?redirect=...') │
+│ Extract: state.uri.queryParameters[..]   │
+└──────────────────────────────────────────┘
+
+Extra Data (Memory - NOT Shareable)
+┌──────────────────────────────────────────┐
+│ /chat_room + {chatRoomId, userName, ...} │
+│ Usage: context.push('/chat_room',        │
+│        extra: {...})                     │
+│ Extract: (state.extra as Map)[key]       │
+└──────────────────────────────────────────┘
+
+
+DEEP LINKING FLOW
+=================
+
+Cold Start (App Not Running)
+────────────────────────────
+Tap Deep Link
+    │
+    ▼
+OS Routes to App
+    │
+    ▼
+AppLinks.getInitialLink()
+    │
+    ▼
+_handleOAuthDeepLink(uri)
+    │
+    ▼
+Route to Appropriate Screen
+
+
+Warm Start (App Running)
+────────────────────────
+Tap Deep Link
+    │
+    ▼
+AppLinks.uriLinkStream listener
+    │
+    ▼
+_handleOAuthDeepLink(uri)
+    │
+    ▼
+Route to Appropriate Screen
+
+
+DEEP LINK CONFIGURATION
+=======================
+
+Android (AndroidManifest.xml)
+┌──────────────────────────────────────┐
+│ Intent Filter                        │
+│ ├─ Action: android.intent.action.VIEW│
+│ ├─ Category: BROWSABLE               │
+│ ├─ Data Scheme: resale.marketplace.. │
+│ └─ Data Host: auth-callback          │
+│                                      │
+│ URI: resale.marketplace.app://       │
+│      auth-callback?code=...          │
+└──────────────────────────────────────┘
+
+iOS (Info.plist)
+┌──────────────────────────────────────┐
+│ CFBundleURLTypes                     │
+│ ├─ Name: resale.marketplace.app      │
+│ └─ Schemes: [resale.marketplace.app] │
+│                                      │
+│ URI: resale.marketplace.app://       │
+│      auth-callback?code=...          │
+└──────────────────────────────────────┘
+
+
+AUTHENTICATION & PROTECTION
+===========================
+
+Router-Level Redirect
+┌────────────────────────────────────┐
+│ GoRouter(                          │
+│   redirect: (context, state) {     │
+│     if (!auth && protected) {      │
+│       return '/login?redirect=..'  │
+│     }                              │
+│     return null;                   │
+│   }                                │
+│ )                                  │
+└────────────────────────────────────┘
+
+Widget-Level Guard
+┌────────────────────────────────────┐
+│ GoRoute(                           │
+│   path: '/product/create',         │
+│   builder: (context, state) =>     │
+│     AuthGuard(                     │
+│       child: ProductCreateScreen() │
+│     )                              │
+│ )                                  │
+└────────────────────────────────────┘
+
+Role-Based Access
+┌────────────────────────────────────┐
+│ if (isAdminPath) {                 │
+│   if (!isAdmin) {                  │
+│     return '/?error=access_denied' │
+│   }                                │
+│ }                                  │
+└────────────────────────────────────┘
+
+
+BOTTOM NAVIGATION FLOW
+======================
+
+ShellRoute with MainNavigationScreen
+┌──────────────────────────────────┐
+│ Taps Tab                         │
+│     │                            │
+│     ▼                            │
+│ MainNavigationScreen.onTap()     │
+│     │                            │
+│     ▼                            │
+│ context.go('/chat') etc          │
+│     │                            │
+│     ▼                            │
+│ GoRouter updates current tab     │
+│     │                            │
+│     ▼                            │
+│ Screen rebuilds                  │
+│     │                            │
+│     ▼                            │
+│ Bottom nav updates highlight     │
+└──────────────────────────────────┘
+
+Tab Sync Logic
+──────────────
+Location: /          → Index 0 (Home)
+Location: /chat      → Index 1 (Chat)
+Location: /shop      → Index 2 (Shop)
+Location: /profile   → Index 3 (Profile)
+Location: Other      → No nav shown
+
+
+SHARING IMPLEMENTATION
+======================
+
+Current Product Sharing
+┌─────────────────────────────────────┐
+│ context.goNamed('product-detail',   │
+│   pathParameters: {'id': '123'})    │
+│                                     │
+│ Share link:                         │
+│ https://everseconds.com/product/123 │
+│                                     │
+│ Problem: Opens web, not app         │
+└─────────────────────────────────────┘
+
+Recommended Product Sharing
+┌─────────────────────────────────────┐
+│ Deep Link (If Implemented):         │
+│ resale.marketplace.app://product/123│
+│                                     │
+│ Or Support Both:                    │
+│ resale.marketplace.app://product/123│
+│ (opens in app if installed)         │
+│ https://everseconds.com/product/123 │
+│ (fallback to web)                   │
+└─────────────────────────────────────┘
+
+
+NAVIGATION COMMANDS
+===================
+
+                ┌─── context.go() ────┐
+                │ Replaces current    │
+                │ Used for main nav   │
+                ▼
+          /product/123
+
+                ┌─── context.push() ──┐
+                │ Adds to stack       │
+                │ Back button works   │
+                ▼
+          /chat_room
+
+                ┌─── context.pop() ───┐
+                │ Returns to prev     │
+                │ Removes from stack  │
+                ▼
+          [Previous Screen]
+
+
+FILE ORGANIZATION
+=================
+
+lib/
+├── utils/
+│   └── app_router.dart (407 lines)
+│       ├─ GoRouter definition
+│       ├─ 30+ Route definitions
+│       ├─ MainNavigationScreen
+│       └─ Navigation logic
+│
+├── main.dart (219 lines)
+│   ├─ AppLinks setup
+│   ├─ Deep link handling
+│   └─ Router initialization
+│
+├── screens/
+│   ├─ product/
+│   │   ├─ product_detail_screen.dart (1120 lines)
+│   │   ├─ product_create_screen.dart
+│   │   └─ my_products_screen.dart
+│   │
+│   ├─ shop/
+│   │   ├─ my_shop_screen.dart
+│   │   └─ public_shop_screen.dart (252 lines)
+│   │
+│   ├─ chat/
+│   │   ├─ chat_list_screen.dart
+│   │   ├─ chat_room_screen.dart
+│   │   └─ enhanced_chat_screen.dart
+│   │
+│   ├─ auth/
+│   │   ├─ login_screen.dart
+│   │   ├─ sign_up_phone_screen.dart
+│   │   ├─ sign_up_kakao_screen.dart
+│   │   └─ oauth_callback_screen.dart
+│   │
+│   ├─ transaction/
+│   │   ├─ transaction_creation_screen.dart
+│   │   ├─ transaction_list_screen.dart
+│   │   └─ transaction_detail_screen.dart
+│   │
+│   └─ ... (other screens)
+│
+└── widgets/
+    ├─ auth_guard.dart
+    └─ navigation/
+        └─ app_bottom_nav.dart
+
+
+SECURITY CONSIDERATIONS
+=======================
+
+Implemented ✅
+│
+├─ Auth guards on protected routes
+├─ Session validation with auto-logout
+├─ Role-based admin access control
+├─ Custom URI scheme (harder to spoof)
+└─ Intent filter with autoVerify (Android)
+
+Missing ❌
+│
+├─ Deep link parameter validation
+├─ OAuth state parameter validation
+├─ Path parameter sanitization
+├─ PKCE (Proof Key) for OAuth
+└─ Rate limiting on navigation
+
+
+STATUS SUMMARY
+==============
+
+Deep Linking:
+  ✅ OAuth callbacks
+  ❌ Product/Shop/Chat deep links
+  ❌ Parameter validation
+  ❌ Security improvements
+
+Route Organization:
+  ✅ Clear categorization
+  ✅ Protected routes
+  ✅ Role-based access
+
+Navigation:
+  ✅ Bottom nav with ShellRoute
+  ✅ Proper redirects
+  ✅ Session management
+
+Sharing:
+  ❌ Uses web URLs (not app links)
+  ❌ No app-to-app linking
+  ❌ Limited deep link support
+
+================================================================================

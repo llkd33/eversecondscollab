@@ -96,8 +96,43 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
                 children: [
                   // 이미지 선택 섹션
                   _buildImageSection(),
+
+                  // AI 이미지 분석 버튼
+                  if (_imageFiles.isNotEmpty)
+                    Container(
+                      color: Colors.white,
+                      padding: EdgeInsets.fromLTRB(
+                        context.isMobile ? 16 : 32,
+                        0,
+                        context.isMobile ? 16 : 32,
+                        16,
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _analyzeImagesWithAI,
+                          icon: const Icon(Icons.auto_awesome, size: 20),
+                          label: const Text(
+                            'AI로 이미지 분석하기',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: Colors.purple[300]!, width: 1.5),
+                            foregroundColor: Colors.purple[700],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
                   const Divider(height: 1),
-                  
+
                   // 기본 정보 입력
                   Responsive.responsiveContainer(
                     context: context,
@@ -513,10 +548,36 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
             ],
           ),
         ),
+
+        const SizedBox(height: 16),
+
+        // AI 세일즈 문구 작성 버튼
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _generateSalesCopyWithAI,
+            icon: const Icon(Icons.auto_awesome, size: 20),
+            label: const Text(
+              'AI기반의 세일즈문구 작성하기',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              side: BorderSide(color: Colors.purple[300]!, width: 1.5),
+              foregroundColor: Colors.purple[700],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
-  
+
   Widget _buildResaleSection() {
     return Container(
       color: Colors.white,
@@ -1100,6 +1161,60 @@ class _ProductCreateScreenState extends State<ProductCreateScreen> {
     }
   }
   
+  Future<void> _analyzeImagesWithAI() async {
+    // TODO: OpenAI GPT Vision API를 사용하여 이미지 분석 구현
+    // 1. 선택된 이미지들을 base64로 인코딩
+    // 2. OpenAI Vision API 호출
+    // 3. 분석 결과로 카테고리, 제목, 설명 자동 완성
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'AI 이미지 분석 기능은 곧 제공될 예정입니다',
+                style: TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.blue[700],
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _generateSalesCopyWithAI() async {
+    // TODO: OpenAI GPT API를 사용하여 세일즈 문구 생성 구현
+    // 1. 현재 입력된 정보 수집 (제목, 카테고리, 가격 등)
+    // 2. OpenAI GPT API로 매력적인 상품 설명 생성
+    // 3. 생성된 텍스트를 설명 필드에 자동 입력
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'AI 세일즈 문구 작성 기능은 곧 제공될 예정입니다',
+                style: TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.blue[700],
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
