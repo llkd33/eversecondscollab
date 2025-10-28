@@ -1,21 +1,20 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
-import '../utils/app_logger.dart';
 
 /// 인증 상태 관리 Provider
 /// 전역적으로 인증 상태를 관리하고 UI 업데이트를 트리거
 class AuthProvider extends ChangeNotifier {
-  final _logger = AppLogger.scoped('AuthProvider');
   final AuthService _authService;
   // 현재 사용자 정보
   UserModel? _currentUser;
   UserModel? get currentUser => _currentUser;
 
   Timer? _sessionRefreshTimer;
-  StreamSubscription<AuthState>? _authStateSubscription;
   bool _isRefreshingSession = false;
   bool? _debugAuthOverride;
 
@@ -45,52 +44,41 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// 사용자 프로필 새로고침
-  Future<void> refreshUserProfile() async {
-    try {
-      final user = await _authService.getUserProfile();
-      _currentUser = user;
-      notifyListeners();
-    } catch (e) {
-      _logger.w('Failed to refresh user profile: $e');
-    }
-  }
-
   /// 인증 상태 초기화 및 리스너 설정
   void _initializeAuth() {
     // 앱 시작 시 기존 세션 복원 시도
     _restoreSession();
 
     // 인증 상태 변경 리스너
-    _authStateSubscription = _authService.authStateChanges.listen((authState) async {
-      _logger.w('🔐 Auth State Change: ${authState.event}');
-      _logger.w('  - Session: ${authState.session?.user?.id ?? "없음"}');
-      _logger.w('  - User Email: ${authState.session?.user?.email ?? "없음"}');
+    _authService.authStateChanges.listen((authState) async {
+      print('🔐 Auth State Change: ${authState.event}');
+      print('  - Session: ${authState.session?.user?.id ?? "없음"}');
+      print('  - User Email: ${authState.session?.user?.email ?? "없음"}');
       
       if (authState.event == AuthChangeEvent.signedIn) {
-        _logger.w('✅ User signed in, processing...');
+        print('✅ User signed in, processing...');
         
         // OAuth 로그인의 경우 프로필 생성이 필요할 수 있음
         final authUser = _authService.currentUser;
         if (authUser != null) {
-          _logger.w('  - Auth User ID: ${authUser.id}');
-          _logger.w('  - Auth User Email: ${authUser.email}');
-          _logger.w('  - Auth Provider: ${authUser.appMetadata['provider']}');
+          print('  - Auth User ID: ${authUser.id}');
+          print('  - Auth User Email: ${authUser.email}');
+          print('  - Auth Provider: ${authUser.appMetadata['provider']}');
           
           await _handleSignInEvent(authUser);
         }
       } else if (authState.event == AuthChangeEvent.tokenRefreshed ||
                  authState.event == AuthChangeEvent.userUpdated) {
-        _logger.w('🔄 Token refreshed or user updated');
+        print('🔄 Token refreshed or user updated');
         await _loadCurrentUser();
       } else if (authState.event == AuthChangeEvent.signedOut) {
-        _logger.w('👋 User signed out');
+        print('👋 User signed out');
         _currentUser = null;
         _stopSessionRefreshTimer();
         notifyListeners();
       } else if (authState.event == AuthChangeEvent.passwordRecovery) {
         // 비밀번호 복구 이벤트 처리
-        _logger.w('Password recovery event received');
+        print('Password recovery event received');
       }
     });
   }
@@ -118,7 +106,7 @@ class AuthProvider extends ChangeNotifier {
         }
       }
     } catch (e) {
-      _logger.w('Session restoration failed: $e');
+      print('Session restoration failed: $e');
       // 세션 복원 실패 시 로그아웃 처리
       await _handleSessionExpired();
     } finally {
@@ -136,7 +124,7 @@ class AuthProvider extends ChangeNotifier {
       _debugAuthOverride = null;
       _stopSessionRefreshTimer();
     } catch (e) {
-      _logger.w('Error handling session expiry: $e');
+      print('Error handling session expiry: $e');
     }
   }
 
@@ -145,35 +133,35 @@ class AuthProvider extends ChangeNotifier {
     final provider = authUser.appMetadata['provider'] as String?;
     final isOAuth = provider != null && provider != 'email';
     
-    _logger.w('🔄 로그인 이벤트 처리 시작...');
-    _logger.w('  - Provider: $provider');
-    _logger.w('  - Is OAuth: $isOAuth');
+    print('🔄 로그인 이벤트 처리 시작...');
+    print('  - Provider: $provider');
+    print('  - Is OAuth: $isOAuth');
     
     if (isOAuth) {
       // OAuth 로그인의 경우 프로필 생성 확인 및 재시도 로직
-      _logger.w('🔐 OAuth 로그인 감지, 프로필 생성 확인 중...');
+      print('🔐 OAuth 로그인 감지, 프로필 생성 확인 중...');
       
       // 약간의 지연을 주어 Supabase가 완전히 준비되도록 함
       await Future.delayed(const Duration(milliseconds: 500));
       
       // 프로필 생성 확인 (재시도 로직 포함)
       final profileCreated = await _authService.ensureUserProfile(maxRetries: 3);
-      _logger.w('  - Profile creation result: $profileCreated');
+      print('  - Profile creation result: $profileCreated');
       
       if (profileCreated) {
         // 프로필 생성 성공 후 로드
         await _loadCurrentUser();
         
         if (_currentUser != null) {
-          _logger.w('✅ OAuth 프로필 로드 성공: ${_currentUser!.name}');
+          print('✅ OAuth 프로필 로드 성공: ${_currentUser!.name}');
         } else {
-          _logger.w('⚠️ 프로필 생성은 성공했지만 로드 실패, 재시도...');
+          print('⚠️ 프로필 생성은 성공했지만 로드 실패, 재시도...');
           await Future.delayed(const Duration(seconds: 1));
           await _loadCurrentUser();
         }
       } else {
-        _logger.w('❌ OAuth 프로필 생성 실패');
-        _errorMessage = '소셜 로그인 후 프로필 생성에 실패했습니다. 다시 시도해주세요.';
+        print('❌ OAuth 프로필 생성 실패');
+        _errorMessage = 'OAuth 로그인 후 프로필 생성에 실패했습니다. 다시 시도해주세요.';
         notifyListeners();
       }
     } else {
@@ -184,14 +172,14 @@ class AuthProvider extends ChangeNotifier {
 
   /// 현재 사용자 정보 로드
   Future<void> _loadCurrentUser({bool restartTimer = true}) async {
-    _logger.w('🔄 Loading current user profile...');
-    _logger.w('📌 Is authenticated: ${_authService.isAuthenticated}');
-    _logger.w('📌 Current auth user ID: ${_authService.currentUser?.id}');
+    print('🔄 Loading current user profile...');
+    print('📌 Is authenticated: ${_authService.isAuthenticated}');
+    print('📌 Current auth user ID: ${_authService.currentUser?.id}');
     
     if (_authService.isAuthenticated) {
       try {
         _currentUser = await _authService.getUserProfile();
-        _logger.w('✅ User profile loaded: ${_currentUser?.name} (${_currentUser?.email})');
+        print('✅ User profile loaded: ${_currentUser?.name} (${_currentUser?.email})');
         
         if (restartTimer) {
           if (_currentUser != null) {
@@ -203,13 +191,13 @@ class AuthProvider extends ChangeNotifier {
         _debugAuthOverride = null;
         notifyListeners();
       } catch (e) {
-        _logger.w('❌ Error loading user profile: $e');
+        print('❌ Error loading user profile: $e');
         if (restartTimer) {
           _stopSessionRefreshTimer();
         }
       }
     } else {
-      _logger.w('⚠️ Not authenticated, skipping user profile load');
+      print('⚠️ Not authenticated, skipping user profile load');
     }
   }
 
@@ -299,7 +287,7 @@ class AuthProvider extends ChangeNotifier {
 
       return false;
     } catch (e) {
-      _logger.w('Auto login failed: $e');
+      print('Auto login failed: $e');
       await _handleSessionExpired();
       return false;
     } finally {
@@ -330,11 +318,11 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _logger.w('🔄 Starting Kakao login...');
+      print('🔄 Starting Kakao login...');
       final launched = await _authService.signInWithKakao(
         redirectPath: redirectPath,
       );
-      _logger.w('📱 Kakao OAuth launched: $launched');
+      print('📱 Kakao OAuth launched: $launched');
       
       // OAuth 로그인은 브라우저/앱을 통해 진행되므로
       // 여기서는 단순히 launched 상태만 반환
@@ -344,7 +332,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return launched;
     } catch (e) {
-      _logger.w('❌ Kakao login error: $e');
+      print('❌ Kakao login error: $e');
       _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _isLoading = false;
       notifyListeners();
@@ -373,8 +361,6 @@ class AuthProvider extends ChangeNotifier {
   void dispose() {
     // 리소스 정리
     _stopSessionRefreshTimer();
-    _authStateSubscription?.cancel();
-    _authStateSubscription = null;
     super.dispose();
   }
 
@@ -422,7 +408,7 @@ class AuthProvider extends ChangeNotifier {
       await _authService.refreshSession();
       await _loadCurrentUser(restartTimer: false);
     } catch (e) {
-      _logger.w('Session refresh failed: $e');
+      print('Session refresh failed: $e');
     } finally {
       _isRefreshingSession = false;
     }

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../utils/app_router.dart';
 
 /// 세션 상태를 모니터링하고 사용자에게 알림을 제공하는 위젯
 class SessionMonitor extends StatefulWidget {
@@ -134,12 +132,11 @@ class _SessionMonitorState extends State<SessionMonitor> {
               onPressed: () async {
                 Navigator.of(context).pop();
                 await authProvider.signOut();
-
-                final rootContext = AppRouter.navigatorKey.currentContext;
-                if (rootContext != null && rootContext.mounted) {
-                  GoRouter.of(rootContext).go('/login');
-                } else if (context.mounted) {
-                  GoRouter.of(context).go('/login');
+                if (context.mounted) {
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    '/login',
+                    (route) => false,
+                  );
                 }
               },
               child: const Text('다시 로그인'),

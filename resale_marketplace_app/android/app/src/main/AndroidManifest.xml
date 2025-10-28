@@ -24,7 +24,34 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            
+            <!-- Deep Link for OAuth Callback -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="resale.marketplace.app"
+                    android:host="auth-callback" />
+            </intent-filter>
         </activity>
+        
+        <!-- 카카오 로그인 -->
+        <activity
+            android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
+            android:exported="true">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- 실제 카카오 네이티브 앱 키 적용 -->
+                <data
+                    android:scheme="kakao0d0b331b737c31682e666aadc2d97763"
+                    android:host="oauth" />
+            </intent-filter>
+        </activity>
+
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -41,5 +68,7 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- 카카오톡 설치 확인을 위한 쿼리 -->
+        <package android:name="com.kakao.talk" />
     </queries>
 </manifest>

@@ -1,65 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? redirectPath;
+
+  const LoginScreen({super.key, this.redirectPath});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> 
+class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  
+  bool _isLoading = false;
+  bool _hasNavigatedAfterSignIn = false;
+
   @override
   void initState() {
     super.initState();
+    // 카카오 SDK 초기화는 main.dart에서 처리됨
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: const Interval(0.0, 0.6, curve: Curves.easeInOut),
-    ));
-    
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic),
-    ));
-    
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeInOut),
+      ),
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic),
+          ),
+        );
+
     _animationController.forward();
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    _maybeRedirectAfterLogin(authProvider);
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryColor.withOpacity(0.1),
-              Colors.white,
-            ],
+            colors: [AppTheme.primaryColor.withOpacity(0.1), Colors.white],
           ),
         ),
         child: SafeArea(
@@ -68,47 +75,53 @@ class _LoginScreenState extends State<LoginScreen>
             child: Column(
               children: [
                 const Spacer(flex: 1),
-                
+
                 // Logo and Title Section
                 FadeTransition(
                   opacity: _fadeAnimation,
                   child: Column(
                     children: [
                       // Animated Logo
-                      TweenAnimationBuilder(
-                        tween: Tween<double>(begin: 0, end: 1),
-                        duration: const Duration(milliseconds: 800),
-                        builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.primaryColor.withOpacity(0.3),
-                                    blurRadius: 30,
-                                    spreadRadius: 5,
-                                  ),
-                                ],
+                      // Hidden Dev: long-press logo to open dev tools
+                      GestureDetector(
+                        onLongPress: null,
+                        child: TweenAnimationBuilder(
+                          tween: Tween<double>(begin: 0, end: 1),
+                          duration: const Duration(milliseconds: 800),
+                          builder: (context, value, child) {
+                            return Transform.scale(
+                              scale: value,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
+                                      blurRadius: 30,
+                                      spreadRadius: 5,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.storefront,
+                                  size: 60,
+                                  color: AppTheme.primaryColor,
+                                ),
                               ),
-                              child: Icon(
-                                Icons.storefront,
-                                size: 60,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(height: 24),
-                      
+
                       // Title
                       Text(
-                        '리세일 마켓',
+                        '에버세컨즈',
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
@@ -116,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                       const SizedBox(height: 8),
-                      
+
                       // Subtitle with gradient
                       ShaderMask(
                         blendMode: BlendMode.srcIn,
@@ -135,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      
+
                       // Features
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -150,16 +163,23 @@ class _LoginScreenState extends State<LoginScreen>
                     ],
                   ),
                 ),
-                
+
                 const Spacer(flex: 2),
-                
-                // Login Buttons Section
+
+                // Kakao Login Section
                 SlideTransition(
                   position: _slideAnimation,
                   child: FadeTransition(
                     opacity: _fadeAnimation,
                     child: Column(
                       children: [
+                        const SizedBox(height: 12),
+                        const Text(
+                          '카카오 계정으로만 로그인할 수 있습니다.',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
                         // Kakao Login Button
                         _LoginButton(
                           onPressed: () {
@@ -175,63 +195,19 @@ class _LoginScreenState extends State<LoginScreen>
                               return const Icon(Icons.message, size: 20);
                             },
                           ),
-                          text: '카카오로 3초만에 시작하기',
-                          isElevated: true,
-                        ),
-                        
-                        const SizedBox(height: 12),
-                        
-                        // Phone Login Button
-                        _LoginButton(
-                          onPressed: () {
-                            context.push('/phone-login');
-                          },
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppTheme.primaryColor,
-                          icon: const Icon(Icons.phone_android, size: 20),
-                          text: '전화번호로 시작하기',
+                          text: '카카오로 로그인',
                           isElevated: false,
                         ),
-                        
-                        const SizedBox(height: 20),
-                        
-                        // Divider with text
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                height: 1,
-                                color: Colors.grey[300],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                '또는',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Container(
-                                height: 1,
-                                color: Colors.grey[300],
-                              ),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 20),
-                        
-                        // Browse as guest
+
+                        const SizedBox(height: 24),
+
+                        const SizedBox(height: 24),
                         TextButton(
                           onPressed: () {
-                            context.go('/home');
+                            context.go('/');
                           },
                           child: Text(
-                            '둘러보기',
+                            '로그인 없이 둘러보기',
                             style: TextStyle(
                               color: Colors.grey[700],
                               fontSize: 15,
@@ -243,9 +219,9 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
                 ),
-                
+
                 const Spacer(flex: 1),
-                
+
                 // Terms and Privacy
                 FadeTransition(
                   opacity: _fadeAnimation,
@@ -253,10 +229,7 @@ class _LoginScreenState extends State<LoginScreen>
                     children: [
                       Text(
                         '계속 진행하면 다음에 동의하는 것으로 간주됩니다',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
@@ -310,34 +283,129 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
   }
-  
-  void _handleKakaoLogin() {
-    // Show loading
+
+  void _maybeRedirectAfterLogin(AuthProvider authProvider) {
+    if (_hasNavigatedAfterSignIn) return;
+    
+    print('🔍 Checking auth status for redirect...');
+    print('  - Is authenticated: ${authProvider.isAuthenticated}');
+    print('  - Current user: ${authProvider.currentUser?.name ?? "없음"}');
+    
+    if (!authProvider.isAuthenticated || authProvider.currentUser == null) {
+      return;
+    }
+
+    _hasNavigatedAfterSignIn = true;
+    final target =
+        (widget.redirectPath != null && widget.redirectPath!.trim().isNotEmpty)
+        ? widget.redirectPath!
+        : '/';
+
+    print('✅ Redirecting to: $target');
+    
+    Future.microtask(() {
+      if (!mounted) return;
+      context.go(target);
+    });
+  }
+
+  void _handleKakaoLogin() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              '카카오 로그인 중...',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ],
+        ),
       ),
     );
-    
-    // Simulate Kakao login
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context); // Close loading
-      context.go('/home'); // Navigate to home
-    });
+
+    try {
+      final authProvider = context.read<AuthProvider>();
+      final success = await authProvider.signInWithKakao(
+        redirectPath: widget.redirectPath,
+      );
+
+      if (mounted) Navigator.pop(context); // Close loading dialog
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('카카오 로그인 페이지로 이동합니다.')));
+      } else if (mounted && authProvider.errorMessage != null) {
+        _showErrorDialog(_getKakaoErrorMessage(authProvider.errorMessage!));
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        _showErrorDialog(_getKakaoErrorMessage(e.toString()));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _getKakaoErrorMessage(String error) {
+    if (error.contains('카카오 SDK가 설정되지 않았습니다')) {
+      return '카카오 로그인이 설정되지 않았습니다. 관리자에게 문의해주세요.';
+    } else if (error.contains('이메일 정보가 필요합니다')) {
+      return '카카오 계정에서 이메일을 공개로 설정해주세요.';
+    } else if (error.contains('닉네임 정보가 필요합니다')) {
+      return '카카오 계정에 닉네임을 설정해주세요.';
+    } else if (error.contains('카카오 로그인이 취소되었습니다')) {
+      return '로그인이 취소되었습니다.';
+    } else if (error.contains('카카오 인증에 실패했습니다')) {
+      return '카카오 인증에 실패했습니다. 다시 시도해주세요.';
+    } else if (error.contains('Database error') || error.contains('프로필 생성')) {
+      return '계정 설정 중 오류가 발생했습니다. 다시 시도해주세요.';
+    } else if (error.contains('server_error')) {
+      return '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    return '카카오 로그인 중 오류가 발생했습니다.';
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('로그인 실패'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class _FeatureChip extends StatelessWidget {
   final IconData icon;
   final String text;
-  
-  const _FeatureChip({
-    required this.icon,
-    required this.text,
-  });
-  
+
+  const _FeatureChip({required this.icon, required this.text});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -356,11 +424,7 @@ class _FeatureChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 14,
-            color: AppTheme.primaryColor,
-          ),
+          Icon(icon, size: 14, color: AppTheme.primaryColor),
           const SizedBox(width: 4),
           Text(
             text,
@@ -383,7 +447,7 @@ class _LoginButton extends StatelessWidget {
   final Widget icon;
   final String text;
   final bool isElevated;
-  
+
   const _LoginButton({
     required this.onPressed,
     required this.backgroundColor,
@@ -392,7 +456,7 @@ class _LoginButton extends StatelessWidget {
     required this.text,
     required this.isElevated,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -412,14 +476,19 @@ class _LoginButton extends StatelessWidget {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   icon,
                   const SizedBox(width: 12),
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ],
@@ -437,14 +506,19 @@ class _LoginButton extends StatelessWidget {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   icon,
                   const SizedBox(width: 12),
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ),
                 ],

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../widgets/common/loading_widget.dart';
 import 'package:provider/provider.dart';
 
 /// 페이지네이션 상태 관리를 위한 추상 클래스
@@ -323,7 +322,9 @@ class _InfiniteScrollViewState<T> extends State<InfiniteScrollView<T>> {
   }
   
   Widget _buildDefaultLoading() {
-    return const LoadingWidget.center(message: '데이터를 불러오는 중...');
+    return const Center(
+      child: CircularProgressIndicator(),
+    );
   }
   
   Widget _buildDefaultError(PaginationProvider<T> provider) {
@@ -464,7 +465,7 @@ class _InfiniteScrollGridViewState<T> extends State<InfiniteScrollGridView<T>> {
           // 초기 로딩
           if (provider.isLoading && provider.items.isEmpty) {
             return widget.loadingWidget ?? 
-                   const LoadingWidget.center(message: '데이터를 불러오는 중...');
+                   const Center(child: CircularProgressIndicator());
           }
           
           // 에러 상태
