@@ -11,8 +11,9 @@ export const productService = {
    * Get all products with optional filters
    */
   async getProducts(filters?: {
-    categoryId?: string;
-    status?: ProductStatus;
+    category?: string;
+    status?: string;
+    seller_id?: string;
     search?: string;
     limit?: number;
     offset?: number;
@@ -23,33 +24,31 @@ export const productService = {
       .from('products')
       .select(`
         *,
-        category:categories(id, name, slug),
-        seller:profiles!seller_id(
+        seller:users!seller_id(
           id,
           name,
-          level,
-          rating,
-          total_transactions,
-          success_rate
+          email,
+          phone,
+          role,
+          is_verified
         )
       `);
 
     // Apply filters
-    if (filters?.categoryId) {
-      query = query.eq('category_id', filters.categoryId);
+    if (filters?.category) {
+      query = query.eq('category', filters.category);
     }
 
     if (filters?.status) {
       query = query.eq('status', filters.status);
     }
 
-    if (filters?.search) {
-      query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
+    if (filters?.seller_id) {
+      query = query.eq('seller_id', filters.seller_id);
     }
 
-    // Default to active products
-    if (!filters?.status) {
-      query = query.eq('status', 'active');
+    if (filters?.search) {
+      query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
     }
 
     // Order by created date
@@ -72,6 +71,47 @@ export const productService = {
     }
 
     return data as Product[];
+  },
+
+  /**
+   * Get product statistics (admin)
+   */
+  async getProductStats() {
+    const supabase = createClient();
+
+    // Total products
+    const { count: totalProducts } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true });
+
+    // Active products
+    const { count: activeProducts } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', '판매중');
+
+    // Sold products
+    const { count: soldProducts } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', '판매완료');
+
+    // Products by category
+    const { data: categoryData } = await supabase
+      .from('products')
+      .select('category');
+
+    const categoryCount: Record<string, number> = {};
+    categoryData?.forEach((product: any) => {
+      categoryCount[product.category] = (categoryCount[product.category] || 0) + 1;
+    });
+
+    return {
+      total: totalProducts || 0,
+      active: activeProducts || 0,
+      sold: soldProducts || 0,
+      byCategory: categoryCount,
+    };
   },
 
   /**
@@ -118,7 +158,16 @@ export const productService = {
 
     if (error) {
       console.error('Error fetching categories:', error);
-      throw error;
+      // Return default categories if table doesn't exist
+      return [
+        { id: '1', name: '의류', slug: 'clothing', icon: '👕', displayOrder: 1 },
+        { id: '2', name: '전자기기', slug: 'electronics', icon: '📱', displayOrder: 2 },
+        { id: '3', name: '생활용품', slug: 'household', icon: '🏠', displayOrder: 3 },
+        { id: '4', name: '가구', slug: 'furniture', icon: '🪑', displayOrder: 4 },
+        { id: '5', name: '스포츠', slug: 'sports', icon: '⚽', displayOrder: 5 },
+        { id: '6', name: '도서', slug: 'books', icon: '📚', displayOrder: 6 },
+        { id: '99', name: '기타', slug: 'other', icon: '📦', displayOrder: 99 },
+      ] as Category[];
     }
 
     return data as Category[];

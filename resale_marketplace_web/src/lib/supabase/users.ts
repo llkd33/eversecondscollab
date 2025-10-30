@@ -59,18 +59,30 @@ export const userService = {
    */
   async getAllUsers(filters?: {
     search?: string;
+    role?: string;
+    is_verified?: boolean;
     limit?: number;
     offset?: number;
   }) {
     const supabase = createClient();
 
     let query = supabase
-      .from('profiles')
+      .from('users')
       .select('*');
+
+    // Apply role filter
+    if (filters?.role) {
+      query = query.eq('role', filters.role);
+    }
+
+    // Apply verification filter
+    if (filters?.is_verified !== undefined) {
+      query = query.eq('is_verified', filters.is_verified);
+    }
 
     // Apply search filter
     if (filters?.search) {
-      query = query.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+      query = query.or(`name.ilike.%${filters.search}%,email.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`);
     }
 
     // Order by created date
@@ -93,6 +105,90 @@ export const userService = {
     }
 
     return data as User[];
+  },
+
+  /**
+   * Get user statistics for admin
+   */
+  async getAllUsersStats() {
+    const supabase = createClient();
+
+    // Get total users
+    const { count: totalUsers } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true });
+
+    // Get verified users
+    const { count: verifiedUsers } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_verified', true);
+
+    // Get users by role
+    const { data: roleData } = await supabase
+      .from('users')
+      .select('role');
+
+    const roleCounts = {
+      일반: 0,
+      대신판매자: 0,
+      관리자: 0,
+    };
+
+    roleData?.forEach((user: any) => {
+      if (user.role in roleCounts) {
+        roleCounts[user.role as keyof typeof roleCounts]++;
+      }
+    });
+
+    return {
+      total: totalUsers || 0,
+      verified: verifiedUsers || 0,
+      unverified: (totalUsers || 0) - (verifiedUsers || 0),
+      ...roleCounts,
+    };
+  },
+
+  /**
+   * Update user role (admin only)
+   */
+  async updateUserRole(id: string, role: '일반' | '대신판매자' | '관리자') {
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ role })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+
+    return data;
+  },
+
+  /**
+   * Verify user (admin only)
+   */
+  async verifyUser(id: string, verified: boolean = true) {
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ is_verified: verified })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error verifying user:', error);
+      throw error;
+    }
+
+    return data;
   },
 
   /**

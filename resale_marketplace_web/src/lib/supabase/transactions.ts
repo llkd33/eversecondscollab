@@ -18,29 +18,10 @@ export const transactionService = {
   }) {
     const supabase = createClient();
 
+    // First, try to get transactions with relationships
     let query = supabase
       .from('transactions')
-      .select(`
-        *,
-        product:products(
-          id,
-          title,
-          price,
-          images
-        ),
-        buyer:profiles!buyer_id(
-          id,
-          name,
-          email,
-          avatar
-        ),
-        seller:profiles!seller_id(
-          id,
-          name,
-          email,
-          avatar
-        )
-      `);
+      .select('*');
 
     // Filter by user (buyer or seller)
     if (filters?.userId) {
@@ -64,14 +45,50 @@ export const transactionService = {
       query = query.range(filters.offset, filters.offset + (filters?.limit || 10) - 1);
     }
 
-    const { data, error } = await query;
+    const { data: transactions, error } = await query;
 
     if (error) {
       console.error('Error fetching transactions:', error);
       throw error;
     }
 
-    return data as Transaction[];
+    if (!transactions || transactions.length === 0) {
+      return [];
+    }
+
+    // Manually fetch related data
+    const productIds = [...new Set(transactions.map(tx => tx.product_id).filter(Boolean))];
+    const userIds = [...new Set([
+      ...transactions.map(tx => tx.buyer_id),
+      ...transactions.map(tx => tx.seller_id),
+      ...transactions.map(tx => tx.reseller_id).filter(Boolean)
+    ])];
+
+    // Fetch products
+    const { data: products } = await supabase
+      .from('products')
+      .select('id, title, price, images')
+      .in('id', productIds);
+
+    // Fetch users
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, name, email, phone')
+      .in('id', userIds);
+
+    // Map products and users to transactions
+    const productsMap = new Map(products?.map(p => [p.id, p]) || []);
+    const usersMap = new Map(users?.map(u => [u.id, u]) || []);
+
+    const enrichedTransactions = transactions.map(tx => ({
+      ...tx,
+      product: productsMap.get(tx.product_id) || null,
+      buyer: usersMap.get(tx.buyer_id) || null,
+      seller: usersMap.get(tx.seller_id) || null,
+      reseller: tx.reseller_id ? usersMap.get(tx.reseller_id) || null : null,
+    }));
+
+    return enrichedTransactions as Transaction[];
   },
 
   /**
