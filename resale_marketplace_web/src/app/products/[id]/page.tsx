@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Product } from '@/types';
+import { Product, ProductStatus } from '@/types';
 import { productService } from '@/lib/supabase/products';
 import { transactionService } from '@/lib/supabase/transactions';
 import { userService } from '@/lib/supabase/users';
@@ -257,16 +257,16 @@ export default function ProductDetailPage() {
             <div className="sticky bottom-0 bg-white p-4 border-t space-y-3">
               <button
                 onClick={handlePurchase}
-                disabled={purchasing || product.status !== 'active'}
+                disabled={purchasing || product.status !== ProductStatus.ACTIVE}
                 className="w-full py-4 rounded-lg text-white font-semibold text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: product.status === 'active' ? colors.primary : colors.textDisabled,
+                  backgroundColor: product.status === ProductStatus.ACTIVE ? colors.primary : colors.textDisabled,
                 }}
               >
-                {purchasing ? '처리 중...' : product.status === 'active' ? '구매하기' : '판매 완료'}
+                {purchasing ? '처리 중...' : product.status === ProductStatus.ACTIVE ? '구매하기' : '판매 완료'}
               </button>
 
-              {product.status === 'active' && (
+              {product.status === ProductStatus.ACTIVE && (
                 <button
                   className="w-full py-4 rounded-lg font-semibold text-lg transition-colors"
                   style={{
