@@ -173,10 +173,10 @@ export default function ProductDetailPage() {
                   <button
                     key={index}
                     onClick={() => setCurrentImageIndex(index)}
-                    className={`relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden ${
-                      index === currentImageIndex ? 'ring-2' : ''
+                    className={`relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
+                      index === currentImageIndex ? '' : 'border-transparent'
                     }`}
-                    style={index === currentImageIndex ? { ringColor: colors.primary } : {}}
+                    style={index === currentImageIndex ? { borderColor: colors.primary } : {}}
                   >
                     <Image
                       src={image}
