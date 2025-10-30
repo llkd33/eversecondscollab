@@ -103,13 +103,13 @@ export default function ProductCard({ product, isKioskMode = false }: ProductCar
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
                 </div>
-                <span className="text-gray-600">{product.seller?.name || '알 수 없음'}</span>
+                <span className="text-gray-600">{product.sellerInfo?.name || '알 수 없음'}</span>
               </div>
 
-              {/* Verified Badge */}
-              {product.seller?.is_verified && (
+              {/* Rating Badge */}
+              {product.sellerInfo?.rating && (
                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-xs font-semibold">
-                  ✓ 인증
+                  ⭐ {product.sellerInfo.rating.toFixed(1)}
                 </span>
               )}
             </div>
