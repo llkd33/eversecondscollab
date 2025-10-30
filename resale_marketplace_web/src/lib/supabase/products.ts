@@ -160,13 +160,13 @@ export const productService = {
       console.error('Error fetching categories:', error);
       // Return default categories if table doesn't exist
       return [
-        { id: '1', name: '의류', slug: 'clothing', icon: '👕', displayOrder: 1 },
-        { id: '2', name: '전자기기', slug: 'electronics', icon: '📱', displayOrder: 2 },
-        { id: '3', name: '생활용품', slug: 'household', icon: '🏠', displayOrder: 3 },
-        { id: '4', name: '가구', slug: 'furniture', icon: '🪑', displayOrder: 4 },
-        { id: '5', name: '스포츠', slug: 'sports', icon: '⚽', displayOrder: 5 },
-        { id: '6', name: '도서', slug: 'books', icon: '📚', displayOrder: 6 },
-        { id: '99', name: '기타', slug: 'other', icon: '📦', displayOrder: 99 },
+        { id: '1', name: '의류', slug: 'clothing', icon: '👕' },
+        { id: '2', name: '전자기기', slug: 'electronics', icon: '📱' },
+        { id: '3', name: '생활용품', slug: 'household', icon: '🏠' },
+        { id: '4', name: '가구', slug: 'furniture', icon: '🪑' },
+        { id: '5', name: '스포츠', slug: 'sports', icon: '⚽' },
+        { id: '6', name: '도서', slug: 'books', icon: '📚' },
+        { id: '99', name: '기타', slug: 'other', icon: '📦' },
       ] as Category[];
     }
 
