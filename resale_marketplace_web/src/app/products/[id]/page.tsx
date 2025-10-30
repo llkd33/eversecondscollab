@@ -66,7 +66,7 @@ export default function ProductDetailPage() {
         buyerId: currentUser.id,
         sellerId: product.sellerId,
         price: product.price,
-        commissionRate: product.commissionRate,
+        commissionRate: product.commissionRate || 0,
       });
 
       alert('구매 요청이 완료되었습니다!');
