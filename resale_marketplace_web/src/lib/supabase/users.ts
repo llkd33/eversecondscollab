@@ -1,5 +1,18 @@
 import { createClient } from './config';
-import type { User } from '@/types';
+import type { UserProfile } from '@/types';
+
+// User type for database users table (different from UserProfile)
+interface User {
+  id: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  is_verified?: boolean;
+  avatar?: string;
+  created_at?: string;
+  updated_at?: string;
+}
 
 /**
  * User Service
