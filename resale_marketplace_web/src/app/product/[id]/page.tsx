@@ -29,9 +29,14 @@ export default function ProductDetailPage() {
 
         const productData = await productService.getProductById(productId);
         setProduct(productData);
-      } catch (err) {
-        console.error('Error loading product:', err);
-        setError('상품을 불러오는데 실패했습니다.');
+      } catch (err: any) {
+        console.error('Error loading product:', {
+          message: err?.message,
+          error: err,
+          productId,
+        });
+        const errorMessage = err?.message || '상품을 불러오는데 실패했습니다.';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
