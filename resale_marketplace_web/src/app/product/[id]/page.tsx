@@ -1,87 +1,48 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import QRCodeModal from '@/components/QRCodeModal';
 import { Product, ProductStatus } from '@/types';
-
-// Mock product data - In production, this would be fetched from Supabase
-const mockProduct: Product = {
-  id: '1',
-  title: '나이키 운동화 270 리액트',
-  price: 85000,
-  description: `거의 새 제품입니다. 3번 정도만 착용했어요.
-  
-  - 사이즈: 270mm
-  - 색상: 블랙/화이트
-  - 구매시기: 2024년 1월
-  - 박스, 여분끈 모두 포함
-  
-  직거래는 강남역에서 가능합니다.
-  택배거래도 가능해요!`,
-  images: [
-    '/api/placeholder/800/800',
-    '/api/placeholder/800/800',
-    '/api/placeholder/800/800',
-    '/api/placeholder/800/800',
-  ],
-  category: { id: '4', name: '스포츠', slug: 'sports' },
-  sellerId: 'user1',
-  sellerInfo: {
-    id: 'user1',
-    name: '김철수',
-    level: 5,
-    rating: 4.8,
-    totalTransactions: 42,
-    successRate: 98,
-    profileImage: '/api/placeholder/100/100',
-  },
-  resaleEnabled: true,
-  commissionRate: 15,
-  commissionAmount: 12750,
-  status: ProductStatus.ACTIVE,
-  createdAt: new Date('2024-03-01'),
-  updatedAt: new Date('2024-03-01'),
-};
-
-// Related products
-const relatedProducts: Product[] = [
-  {
-    id: '2',
-    title: '아디다스 울트라부스트',
-    price: 95000,
-    description: '상태 좋습니다',
-    images: ['/api/placeholder/400/400'],
-    category: { id: '4', name: '스포츠', slug: 'sports' },
-    sellerId: 'user2',
-    sellerInfo: {
-      id: 'user2',
-      name: '이영희',
-      level: 3,
-      rating: 4.5,
-      totalTransactions: 15,
-      successRate: 95,
-    },
-    resaleEnabled: false,
-    status: ProductStatus.ACTIVE,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  // Add more related products
-];
+import { productService } from '@/lib/supabase/products';
+import { getProductImageUrl } from '@/lib/utils/imageUtils';
 
 export default function ProductDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const productId = params.id as string;
+  
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [showQRModal, setShowQRModal] = useState(false);
   const [isKioskMode, setIsKioskMode] = useState(false);
-  
-  // In production, fetch product by params.id
-  const product = mockProduct;
 
-  React.useEffect(() => {
+  useEffect(() => {
+    const loadProduct = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const productData = await productService.getProductById(productId);
+        setProduct(productData);
+      } catch (err) {
+        console.error('Error loading product:', err);
+        setError('상품을 불러오는데 실패했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (productId) {
+      loadProduct();
+    }
+  }, [productId]);
+
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     setIsKioskMode(urlParams.get('kiosk') === 'true');
   }, []);
@@ -104,6 +65,39 @@ export default function ProductDetailPage() {
     if (days < 7) return `${days}일 전`;
     return date.toLocaleDateString('ko-KR');
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">상품을 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <svg className="mx-auto h-12 w-12 mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-gray-700 text-lg mb-4">{error || '상품을 찾을 수 없습니다'}</p>
+          <button
+            onClick={() => router.push('/')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+          >
+            홈으로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const productImages = product.images && product.images.length > 0 ? product.images : [];
+  const mainImageUrl = getProductImageUrl(productImages, selectedImage);
 
   return (
     <>
@@ -140,12 +134,13 @@ export default function ProductDetailPage() {
             <div className="bg-white rounded-xl overflow-hidden">
               {/* Main Image */}
               <div className="relative aspect-square bg-gray-100">
-                {product.images[selectedImage] ? (
+                {mainImageUrl ? (
                   <Image
-                    src={product.images[selectedImage]}
+                    src={mainImageUrl}
                     alt={product.title}
                     fill
                     className="object-cover"
+                    unoptimized={mainImageUrl.startsWith('http')}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">
@@ -165,26 +160,32 @@ export default function ProductDetailPage() {
               </div>
               
               {/* Thumbnail Images */}
-              <div className="p-4">
-                <div className="grid grid-cols-4 gap-2">
-                  {product.images.map((image, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setSelectedImage(index)}
-                      className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                        selectedImage === index ? 'border-blue-500' : 'border-gray-200'
-                      }`}
-                    >
-                      <Image
-                        src={image}
-                        alt={`${product.title} ${index + 1}`}
-                        fill
-                        className="object-cover"
-                      />
-                    </button>
-                  ))}
+              {productImages.length > 1 && (
+                <div className="p-4">
+                  <div className="grid grid-cols-4 gap-2">
+                    {productImages.map((image, index) => {
+                      const imageUrl = getProductImageUrl(productImages, index);
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => setSelectedImage(index)}
+                          className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                            selectedImage === index ? 'border-blue-500' : 'border-gray-200'
+                          }`}
+                        >
+                          <Image
+                            src={imageUrl}
+                            alt={`${product.title} ${index + 1}`}
+                            fill
+                            className="object-cover"
+                            unoptimized={imageUrl.startsWith('http')}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Product Info */}
@@ -240,12 +241,13 @@ export default function ProductDetailPage() {
                 <h2 className="font-semibold text-lg mb-4">판매자 정보</h2>
                 <div className="flex items-center gap-4">
                   <div className="relative w-16 h-16 bg-gray-200 rounded-full overflow-hidden">
-                    {product.sellerInfo.profileImage ? (
+                    {product.sellerInfo?.profileImage ? (
                       <Image
                         src={product.sellerInfo.profileImage}
-                        alt={product.sellerInfo.name}
+                        alt={product.sellerInfo.name || '판매자'}
                         fill
                         className="object-cover"
+                        unoptimized={product.sellerInfo.profileImage.startsWith('http')}
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full">
@@ -258,21 +260,29 @@ export default function ProductDetailPage() {
                   
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-lg">{product.sellerInfo.name}</h3>
-                      <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-xs font-semibold">
-                        Lv.{product.sellerInfo.level}
-                      </span>
+                      <h3 className="font-semibold text-lg">{product.sellerInfo?.name || '알 수 없음'}</h3>
+                      {product.sellerInfo?.level && (
+                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-xs font-semibold">
+                          Lv.{product.sellerInfo.level}
+                        </span>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <div className="flex items-center gap-1">
-                        <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        <span className="font-semibold">{product.sellerInfo.rating}</span>
-                      </div>
-                      <span>거래 {product.sellerInfo.totalTransactions}회</span>
-                      <span>성공률 {product.sellerInfo.successRate}%</span>
+                      {product.sellerInfo?.rating && (
+                        <div className="flex items-center gap-1">
+                          <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                          <span className="font-semibold">{product.sellerInfo.rating}</span>
+                        </div>
+                      )}
+                      {product.sellerInfo?.totalTransactions !== undefined && (
+                        <span>거래 {product.sellerInfo.totalTransactions}회</span>
+                      )}
+                      {product.sellerInfo?.successRate !== undefined && (
+                        <span>성공률 {product.sellerInfo.successRate}%</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -331,30 +341,6 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
-          {/* Related Products */}
-          <div className="mb-8">
-            <h2 className="font-semibold text-xl mb-4">관련 상품</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {relatedProducts.map((relatedProduct) => (
-                <Link key={relatedProduct.id} href={`/product/${relatedProduct.id}`}>
-                  <div className="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                    <div className="relative aspect-square bg-gray-100">
-                      <Image
-                        src={relatedProduct.images[0] || '/api/placeholder/400/400'}
-                        alt={relatedProduct.title}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="p-3">
-                      <h3 className="font-medium text-sm mb-1 line-clamp-2">{relatedProduct.title}</h3>
-                      <p className="font-bold">{formatPrice(relatedProduct.price)}</p>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
         </main>
       </div>
 

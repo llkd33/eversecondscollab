@@ -4,6 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Product, ProductStatus } from '@/types';
+import { getProductImageUrl } from '@/lib/utils/imageUtils';
 
 interface ProductCardProps {
   product: Product;
@@ -27,13 +28,14 @@ export default function ProductCard({ product, isKioskMode = false }: ProductCar
       <div className={`bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer ${cardSize} flex flex-col`}>
         {/* Image Container */}
         <div className={`relative ${imageSize} bg-gray-100`}>
-          {product.images[0] ? (
+          {product.images && product.images.length > 0 ? (
             <Image
-              src={product.images[0]}
+              src={getProductImageUrl(product.images, 0)}
               alt={product.title}
               fill
               className="object-cover"
               sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              unoptimized={getProductImageUrl(product.images, 0).startsWith('http')}
             />
           ) : (
             <div className="flex items-center justify-center h-full">

@@ -8,6 +8,7 @@ import { productService } from '@/lib/supabase/products';
 import { transactionService } from '@/lib/supabase/transactions';
 import { userService } from '@/lib/supabase/users';
 import { colors } from '@/lib/theme';
+import { getProductImageUrl } from '@/lib/utils/imageUtils';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -152,10 +153,11 @@ export default function ProductDetailPage() {
             <div className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden">
               {product.images && product.images.length > 0 ? (
                 <Image
-                  src={product.images[currentImageIndex]}
+                  src={getProductImageUrl(product.images, currentImageIndex)}
                   alt={product.title}
                   fill
                   className="object-cover"
+                  unoptimized={getProductImageUrl(product.images, currentImageIndex).startsWith('http')}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
@@ -169,23 +171,27 @@ export default function ProductDetailPage() {
             {/* Image Thumbnails */}
             {product.images && product.images.length > 1 && (
               <div className="flex gap-2 overflow-x-auto">
-                {product.images.map((image, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentImageIndex(index)}
-                    className={`relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
-                      index === currentImageIndex ? '' : 'border-transparent'
-                    }`}
-                    style={index === currentImageIndex ? { borderColor: colors.primary } : {}}
-                  >
-                    <Image
-                      src={image}
-                      alt={`${product.title} ${index + 1}`}
-                      fill
-                      className="object-cover"
-                    />
-                  </button>
-                ))}
+                {product.images.map((image, index) => {
+                  const imageUrl = getProductImageUrl(product.images, index);
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentImageIndex(index)}
+                      className={`relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
+                        index === currentImageIndex ? '' : 'border-transparent'
+                      }`}
+                      style={index === currentImageIndex ? { borderColor: colors.primary } : {}}
+                    >
+                      <Image
+                        src={imageUrl}
+                        alt={`${product.title} ${index + 1}`}
+                        fill
+                        className="object-cover"
+                        unoptimized={imageUrl.startsWith('http')}
+                      />
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
