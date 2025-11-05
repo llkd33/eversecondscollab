@@ -12,10 +12,8 @@ interface QRCodeModalProps {
 export default function QRCodeModal({ isOpen, onClose, productId }: QRCodeModalProps) {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
-  // QR 코드에 표시할 URL 생성 (임시로 everseconds.com 사용)
-  const qrUrl = productId 
-    ? `https://everseconds.com/product/${productId}`
-    : 'https://everseconds.com';
+  // QR 코드에 표시할 URL 생성 (임시로 everseconds.com 메인으로 이동)
+  const qrUrl = 'https://everseconds.com';
 
   useEffect(() => {
     if (isOpen && qrUrl) {
