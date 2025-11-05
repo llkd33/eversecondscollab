@@ -1,5 +1,6 @@
 import { createClient } from './config';
-import type { Product, Category, ProductStatus } from '@/types';
+import type { Product, Category } from '@/types';
+import { ProductStatus } from '@/types';
 
 /**
  * Product Service
