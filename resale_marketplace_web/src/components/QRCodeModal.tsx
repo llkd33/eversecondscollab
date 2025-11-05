@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { QRCodeSVG } from 'react-qr-code';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 
 interface QRCodeModalProps {
   isOpen: boolean;
@@ -10,12 +10,33 @@ interface QRCodeModalProps {
 }
 
 export default function QRCodeModal({ isOpen, onClose, productId }: QRCodeModalProps) {
-  if (!isOpen) return null;
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   // QR 코드에 표시할 URL 생성 (임시로 everseconds.com 사용)
   const qrUrl = productId 
     ? `https://everseconds.com/product/${productId}`
     : 'https://everseconds.com';
+
+  useEffect(() => {
+    if (isOpen && qrUrl) {
+      QRCode.toDataURL(qrUrl, {
+        width: 192,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      })
+        .then((url) => {
+          setQrCodeDataUrl(url);
+        })
+        .catch((err) => {
+          console.error('QR 코드 생성 오류:', err);
+        });
+    }
+  }, [isOpen, qrUrl]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -57,13 +78,17 @@ export default function QRCodeModal({ isOpen, onClose, productId }: QRCodeModalP
           {/* QR Code */}
           <div className="bg-gray-100 rounded-lg p-8 mb-6">
             <div className="bg-white rounded-lg p-4 flex items-center justify-center">
-              <QRCodeSVG
-                value={qrUrl}
-                size={192}
-                level="H"
-                style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                viewBox={`0 0 192 192`}
-              />
+              {qrCodeDataUrl ? (
+                <img 
+                  src={qrCodeDataUrl} 
+                  alt="QR Code" 
+                  className="w-48 h-48"
+                />
+              ) : (
+                <div className="w-48 h-48 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              )}
             </div>
             <p className="text-sm text-gray-500 mt-4">
               휴대폰 카메라로 QR코드를 스캔하세요
