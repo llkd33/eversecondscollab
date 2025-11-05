@@ -996,7 +996,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void _shareProduct() {
     if (_product == null) return;
 
-    final productLink = 'https://resalemarketplace-kea39vgf7-everseconds-projects.vercel.app/product/${_product!.id}';
+    final productLink = 'https://everseconds.com/product/${_product!.id}';
 
     showDialog(
       context: context,

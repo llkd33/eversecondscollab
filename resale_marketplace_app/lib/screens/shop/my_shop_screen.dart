@@ -180,10 +180,57 @@ class _MyShopScreenState extends State<MyShopScreen>
     super.dispose();
   }
 
-  void _shareShopLink(BuildContext context) {
-    if (_currentShop == null) return;
+  Future<void> _shareShopLink(BuildContext context) async {
+    if (_currentShop == null || _currentUser == null) return;
 
-    final shopLink = 'https://resalemarketplace-kea39vgf7-everseconds-projects.vercel.app/shop/${_currentShop!.shareUrl}';
+    // shareUrl이 없으면 자동 생성
+    String? shareUrl = _currentShop!.shareUrl;
+    if (shareUrl == null || shareUrl.isEmpty) {
+      setState(() => _isLoading = true);
+      try {
+        shareUrl = await _shopService.ensureShareUrl(
+          _currentShop!.id,
+          _currentUser!.id,
+        );
+        
+        if (shareUrl == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('샵 링크를 생성하는데 실패했습니다. 잠시 후 다시 시도해주세요.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        // 업데이트된 샵 정보 다시 로드
+        final updatedShop = await _shopService.getShopById(_currentShop!.id);
+        if (updatedShop != null) {
+          setState(() {
+            _currentShop = updatedShop;
+          });
+        }
+      } catch (e) {
+        print('Error ensuring shareUrl: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('샵 링크 생성 중 오류가 발생했습니다: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      } finally {
+        setState(() => _isLoading = false);
+      }
+    }
+
+    final shopLink = 'https://everseconds.com/shop/$shareUrl';
 
     Clipboard.setData(ClipboardData(text: shopLink));
 

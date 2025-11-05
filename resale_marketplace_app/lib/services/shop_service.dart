@@ -308,6 +308,73 @@ class ShopService {
     }
   }
 
+  // 샵의 shareUrl 생성 또는 업데이트
+  Future<String?> ensureShareUrl(String shopId, String ownerId) async {
+    try {
+      if (!UuidUtils.isValid(shopId)) {
+        print('ensureShareUrl skipped: invalid UUID "$shopId"');
+        return null;
+      }
+
+      // 현재 샵 정보 확인
+      final shopResponse = await _client
+          .from('shops')
+          .select('share_url')
+          .eq('id', shopId)
+          .maybeSingle();
+
+      if (shopResponse != null && shopResponse['share_url'] != null) {
+        return shopResponse['share_url'] as String;
+      }
+
+      // shareUrl이 없으면 생성
+      final baseShareUrl = _buildBaseShareUrl(ownerId);
+      var candidate = baseShareUrl;
+      var attempt = 0;
+      PostgrestException? lastDuplicateError;
+
+      while (attempt < 6) {
+        try {
+          final response = await _client
+              .from('shops')
+              .update({'share_url': candidate})
+              .eq('id', shopId)
+              .select('share_url')
+              .single();
+
+          return response['share_url'] as String;
+        } on PostgrestException catch (error) {
+          final isShareUrlConflict = (error.message ?? '').contains(
+            'shops_share_url_key',
+          );
+
+          if (!isShareUrlConflict) {
+            rethrow;
+          }
+
+          lastDuplicateError = error;
+          attempt += 1;
+          candidate = _buildShareUrlWithSuffix(baseShareUrl);
+          await Future.delayed(Duration(milliseconds: 30 * attempt));
+        }
+      }
+
+      // 최종 fallback
+      final fallbackShareUrl = _buildRandomShareUrl();
+      final response = await _client
+          .from('shops')
+          .update({'share_url': fallbackShareUrl})
+          .eq('id', shopId)
+          .select('share_url')
+          .single();
+
+      return response['share_url'] as String;
+    } catch (e) {
+      print('Error ensuring shareUrl: $e');
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _fetchShopProductIds(
     String shopId, {
     required bool isResale,

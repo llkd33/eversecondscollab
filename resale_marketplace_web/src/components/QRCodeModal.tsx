@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { QRCodeSVG } from 'react-qr-code';
 
 interface QRCodeModalProps {
   isOpen: boolean;
@@ -10,6 +11,11 @@ interface QRCodeModalProps {
 
 export default function QRCodeModal({ isOpen, onClose, productId }: QRCodeModalProps) {
   if (!isOpen) return null;
+
+  // QR 코드에 표시할 URL 생성 (임시로 everseconds.com 사용)
+  const qrUrl = productId 
+    ? `https://everseconds.com/product/${productId}`
+    : 'https://everseconds.com';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -48,22 +54,16 @@ export default function QRCodeModal({ isOpen, onClose, productId }: QRCodeModalP
             안전한 거래를 위해 앱을 다운로드하세요
           </p>
           
-          {/* QR Code Placeholder */}
+          {/* QR Code */}
           <div className="bg-gray-100 rounded-lg p-8 mb-6">
-            <div className="bg-white rounded-lg p-4">
-              {/* This would be replaced with actual QR code */}
-              <div className="w-48 h-48 mx-auto bg-black opacity-10 rounded">
-                <svg className="w-full h-full p-8" viewBox="0 0 100 100">
-                  <rect x="10" y="10" width="20" height="20" fill="currentColor"/>
-                  <rect x="40" y="10" width="20" height="20" fill="currentColor"/>
-                  <rect x="70" y="10" width="20" height="20" fill="currentColor"/>
-                  <rect x="10" y="40" width="20" height="20" fill="currentColor"/>
-                  <rect x="70" y="40" width="20" height="20" fill="currentColor"/>
-                  <rect x="10" y="70" width="20" height="20" fill="currentColor"/>
-                  <rect x="40" y="70" width="20" height="20" fill="currentColor"/>
-                  <rect x="70" y="70" width="20" height="20" fill="currentColor"/>
-                </svg>
-              </div>
+            <div className="bg-white rounded-lg p-4 flex items-center justify-center">
+              <QRCodeSVG
+                value={qrUrl}
+                size={192}
+                level="H"
+                style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                viewBox={`0 0 192 192`}
+              />
             </div>
             <p className="text-sm text-gray-500 mt-4">
               휴대폰 카메라로 QR코드를 스캔하세요
